@@ -16,7 +16,7 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 public class PushChallengeStore {
 
     private static final String CHALLENGE_PREFIX = "push-mfa:challenge:";
-    private static final String AUTH_INDEX_PREFIX = "push-mfa:auth-index:";
+    private static final String USER_INDEX_PREFIX = "push-mfa:user-index:";
 
     private final KeycloakSession session;
     private final SingleUseObjectProvider singleUse;
@@ -28,7 +28,7 @@ public class PushChallengeStore {
 
     public PushChallenge create(String realmId,
                                 String userId,
-                                byte[] challengeBytes,
+                                byte[] nonceBytes,
                                 PushChallenge.Type type,
                                 Duration ttl,
                                 String credentialId) {
@@ -39,7 +39,7 @@ public class PushChallengeStore {
         Map<String, String> data = new HashMap<>();
         data.put("realmId", realmId);
         data.put("userId", userId);
-        data.put("nonce", encodeNonce(challengeBytes));
+        data.put("nonce", encodeNonce(nonceBytes));
         data.put("expiresAt", expiresAt.toString());
         data.put("type", type.name());
         data.put("status", PushChallengeStatus.PENDING.name());
@@ -56,7 +56,7 @@ public class PushChallengeStore {
             replaceAuthenticationIndex(realmId, userId, id, expiresAt, ttlSeconds);
         }
 
-        return new PushChallenge(id, realmId, userId, challengeBytes, credentialId, expiresAt, type, PushChallengeStatus.PENDING, now, null);
+        return new PushChallenge(id, realmId, userId, nonceBytes, credentialId, expiresAt, type, PushChallengeStatus.PENDING, now, null);
     }
 
     public Optional<PushChallenge> get(String challengeId) {
@@ -106,14 +106,14 @@ public class PushChallengeStore {
     }
 
     public List<PushChallenge> findPendingForUser(String realmId, String userId) {
-        Map<String, String> index = singleUse.get(authIndexKey(realmId, userId));
+        Map<String, String> index = singleUse.get(userIndexKey(realmId, userId));
         if (index == null) {
             return List.of();
         }
 
         String challengeId = index.get("challengeId");
         if (challengeId == null) {
-            singleUse.remove(authIndexKey(realmId, userId));
+            singleUse.remove(userIndexKey(realmId, userId));
             return List.of();
         }
 
@@ -122,8 +122,12 @@ public class PushChallengeStore {
             return List.of(challenge.get());
         }
 
-        singleUse.remove(authIndexKey(realmId, userId));
+        singleUse.remove(userIndexKey(realmId, userId));
         return List.of();
+    }
+
+    public int countPendingAuthentication(String realmId, String userId) {
+        return findPendingForUser(realmId, userId).size();
     }
 
     private PushChallenge updateStatus(String challengeId, Map<String, String> data, PushChallengeStatus status) {
@@ -148,7 +152,7 @@ public class PushChallengeStore {
                                              String challengeId,
                                              Instant expiresAt,
                                              long ttlSeconds) {
-        Map<String, String> previous = singleUse.remove(authIndexKey(realmId, userId));
+        Map<String, String> previous = singleUse.remove(userIndexKey(realmId, userId));
         if (previous != null) {
             String previousId = previous.get("challengeId");
             if (previousId != null && !previousId.equals(challengeId)) {
@@ -159,11 +163,11 @@ public class PushChallengeStore {
         Map<String, String> index = new HashMap<>();
         index.put("challengeId", challengeId);
         index.put("expiresAt", expiresAt.toString());
-        singleUse.put(authIndexKey(realmId, userId), ttlSeconds, index);
+        singleUse.put(userIndexKey(realmId, userId), ttlSeconds, index);
     }
 
     private void removeAuthenticationIndex(String realmId, String userId, boolean removeChallenge) {
-        Map<String, String> previous = singleUse.remove(authIndexKey(realmId, userId));
+        Map<String, String> previous = singleUse.remove(userIndexKey(realmId, userId));
         if (!removeChallenge || previous == null) {
             return;
         }
@@ -213,8 +217,8 @@ public class PushChallengeStore {
         return CHALLENGE_PREFIX + challengeId;
     }
 
-    private String authIndexKey(String realmId, String userId) {
-        return AUTH_INDEX_PREFIX + realmId + ":" + userId;
+    private String userIndexKey(String realmId, String userId) {
+        return USER_INDEX_PREFIX + realmId + ":" + userId;
     }
 
     private byte[] decodeNonce(String value) {

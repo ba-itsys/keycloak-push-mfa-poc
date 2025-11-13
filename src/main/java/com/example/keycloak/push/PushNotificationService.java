@@ -17,14 +17,16 @@ public final class PushNotificationService {
                                     UserModel user,
                                     String confirmToken,
                                     String pseudonymousUserId,
-                                    String challengeId) {
-        LOG.infof("Simulated Firebase push {realm=%s,user=%s,version=%s,type=%s,pseudonymousUserId=%s,challengeId=%s}",
+                                    String challengeId,
+                                    String clientId) {
+        LOG.infof("Simulated Firebase push {realm=%s,user=%s,version=%s,type=%s,pseudonymousUserId=%s,challengeId=%s,clientId=%s}",
             realm.getName(),
             user.getUsername(),
             PushMfaConstants.PUSH_MESSAGE_VERSION,
             PushMfaConstants.PUSH_MESSAGE_TYPE,
             pseudonymousUserId,
-            challengeId);
-        TokenLogHelper.logJwt("confirm-token-outbound", confirmToken);
+            challengeId,
+            clientId);
+        TokenLogHelper.logJwt("confirm-token", confirmToken);
     }
 }

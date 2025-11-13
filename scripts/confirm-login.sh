@@ -111,9 +111,8 @@ LOGIN_SIGNATURE_B64=$(printf '%s' "$LOGIN_HEADER_B64.$LOGIN_PAYLOAD_B64" | opens
 DEVICE_LOGIN_TOKEN="$LOGIN_HEADER_B64.$LOGIN_PAYLOAD_B64.$LOGIN_SIGNATURE_B64"
 
 APPROVE_PAYLOAD=$(jq -n \
-  --arg userId "$USER_ID" \
   --arg token "$DEVICE_LOGIN_TOKEN" \
-  '{"userId": $userId, "token": $token}')
+  '{"token": $token}')
 
 REALM_BASE=$(echo "$TOKEN_ENDPOINT" | sed 's#/protocol/.*##')
 RESPOND_URL="$REALM_BASE/push-mfa/login/challenges/$CHALLENGE_ID/respond"

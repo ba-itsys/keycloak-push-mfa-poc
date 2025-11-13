@@ -12,7 +12,6 @@ import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.util.List;
 
 public class PushMfaRegisterRequiredAction implements RequiredActionProvider, RequiredActionFactory {
@@ -149,14 +148,14 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
         }
 
         if (challenge == null) {
-            byte[] challengeBytes = new byte[PushMfaConstants.CHALLENGE_SIZE_BYTES];
-            RANDOM.nextBytes(challengeBytes);
+            byte[] nonceBytes = new byte[PushMfaConstants.NONCE_BYTES_SIZE];
+            RANDOM.nextBytes(nonceBytes);
             challenge = store.create(
                 context.getRealm().getId(),
                 context.getUser().getId(),
-                challengeBytes,
+                nonceBytes,
                 PushChallenge.Type.ENROLLMENT,
-                Duration.ofSeconds(PushMfaConstants.CHALLENGE_TTL_SECONDS),
+                PushMfaConstants.CHALLENGE_TTL,
                 null);
             authSession.setAuthNote(PushMfaConstants.ENROLL_CHALLENGE_NOTE, challenge.getId());
         }

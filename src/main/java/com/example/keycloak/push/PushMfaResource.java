@@ -161,14 +161,11 @@ public class PushMfaResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response respondToChallenge(@PathParam("cid") String cid, ChallengeRespondRequest request) {
         AccessToken token = authenticateOrThrow();
-        String userId = require(request.userId(), "userId");
         String challengeId = require(cid, "cid");
         PushChallenge challenge = challengeStore.get(challengeId)
             .orElseThrow(() -> new NotFoundException("Challenge not found"));
 
-        if (!Objects.equals(challenge.getUserId(), userId)) {
-            throw new ForbiddenException("Challenge does not belong to user");
-        }
+        String challengeUserId = challenge.getUserId();
 
         if (challenge.getType() != PushChallenge.Type.AUTHENTICATION) {
             throw new BadRequestException("Challenge is not for login");
@@ -186,7 +183,7 @@ public class PushMfaResource {
 
         String deviceToken = require(request.token(), "token");
         TokenLogHelper.logJwt("login-device-token", deviceToken);
-        UserModel user = getUser(userId);
+        UserModel user = getUser(challengeUserId);
 
         JWSInput loginResponse;
         try {
@@ -246,7 +243,7 @@ public class PushMfaResource {
         }
 
         String tokenSubject = require(jsonText(payload, "sub"), "sub");
-        if (!Objects.equals(tokenSubject, userId)) {
+        if (!Objects.equals(tokenSubject, challengeUserId)) {
             throw new ForbiddenException("Authentication token subject mismatch");
         }
 
@@ -308,8 +305,7 @@ public class PushMfaResource {
                           @JsonProperty("expiresAt") Instant expiresAt) {
     }
 
-    record ChallengeRespondRequest(@JsonProperty("userId") String userId,
-                                   @JsonProperty("token") String token,
+    record ChallengeRespondRequest(@JsonProperty("token") String token,
                                    @JsonProperty("action") String action) {
     }
 }

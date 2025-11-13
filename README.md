@@ -4,7 +4,7 @@
 
 :warning: This is a proof-of-concept implementation intended for educational purposes only. Do not use in production environments.
 
-This project extends Keycloak with a push-style second factor that mimics passkey primitives. The mobile app never receives the real user identifier from Keycloak; instead, it works with a pseudonymous id that only the app can map back to the real user. Everything is implemented with standard Keycloak SPIs plus a small JAX-RS resource exposed under `/realms/<realm>/push-mfa`.
+This project extends Keycloak with a push-style second factor that mimics passkey primitives. After initial enrollment, the mobile app never receives the real user identifier from Keycloak; instead, it works with a pseudonymous id that only the app can map back to the real user. Everything is implemented with standard Keycloak SPIs plus a small JAX-RS resource exposed under `/realms/<realm>/push-mfa`.
 
 - Build the provider: `mvn -DskipTests package`
 - Run Keycloak locally (imports realm + loads provider): `docker compose up --build keycloak`
@@ -13,7 +13,7 @@ This project extends Keycloak with a push-style second factor that mimics passke
 
 ## High Level Flow
 
-1. **Enrollment challenge (RequiredAction):** Keycloak renders a QR code that encodes the realm-signed `enrollmentToken` (in this demo it uses a custom scheme: `push-mfa-login-app://?token=<enrollmentToken>). The token is a JWT signed with the realm key and contains user id (`sub`), username, `enrollmentId`, and a Base64URL nonce.
+1. **Enrollment challenge (RequiredAction):** Keycloak renders a QR code that encodes the realm-signed `enrollmentToken` (in this demo it uses a custom scheme: `push-mfa-login-app://?token=<enrollmentToken>`). The token is a JWT signed with the realm key and contains user id (`sub`), username, `enrollmentId`, and a Base64URL nonce.
 
    ```json
    {
@@ -67,6 +67,7 @@ This project extends Keycloak with a push-style second factor that mimics passke
      "typ": "1",
      "ver": "1",
      "cid": "1a6d6a0b-3385-4772-8eb8-0d2f4dbd25a4",
+     "client_id": "test-app",
      "iat": 1731402960,
      "exp": 1731403260
    }
@@ -138,7 +139,6 @@ Authorization: Bearer <device-service-token>
 Content-Type: application/json
 
 {
-  "userId": "<keycloak-user-id>",
   "token": "<device-signed login JWT>",
   "action": "approve"  // optional, defaults to approve. use "deny" to reject.
 }
@@ -157,5 +157,25 @@ On approval, Keycloak verifies the signature with the stored device JWK, ensures
 - **State to store locally:** pseudonymous user id ↔ real Keycloak user id mapping, the device key pair, the `kid`, `deviceType`, `firebaseId`, and any metadata needed to post to Keycloak again.
 - **Confirm token handling:** When the confirm token arrives through Firebase (or when the user copies it from the waiting UI), decode the JWT, extract `cid` and `sub`, and either call `/login/pending` (optional) or immediately sign the login approval JWT and post it to `/login/challenges/{cid}/respond`.
 - **Error handling:** Enrollment and login requests return structured error responses (`400`, `403`, or `404`) when the JWTs are invalid, expired, or mismatched. Surface those errors to the user to re-trigger the flow if necessary.
+- **Key rotation / Firebase changes:** Rotating the device key pair or updating the `firebaseId` would require dedicated Keycloak endpoints to update the stored credential; those flows are out of scope for this PoC, so the workaround is to delete the credential and re-enroll.
 
 With these primitives an actual mobile app UI or automation can be layered on top without depending on helper shell scripts.
+
+## Security Guarantees and Mobile Obligations
+
+### Security guarantees provided by the extension
+
+- **Signed artifacts end-to-end:** Enrollment and confirm tokens are JWTs signed by realm keys, and device responses are signed with the device key pair. Every hop is authenticated and tamper-evident.
+- **Challenge binding:** Enrollment tokens embed a nonce plus enrollment id, and login approvals reference the opaque challenge id (`cid`), so replaying a response for a different user or challenge fails.
+- **Limited data exposure:** Confirm tokens carry only the pseudonymous user id and challenge id, preventing the push channel from learning the user’s identity or whether a login succeeded.
+- **Short-lived state:** Challenge lifetime equals every token’s `exp`, so an attacker has at most ~2 minutes to replay data even if transport is intercepted.
+- **Key continuity:** The stored `cnf.jwk` couples future approvals to the same hardware-backed key, giving Keycloak a stable signal that a response truly came from the enrolled device.
+
+### Obligations for the mobile application
+
+- **Verify every JWT:** Check issuer, audience, signature, and `exp` on enrollment and confirm tokens before acting. Fetch the realm JWKS over HTTPS and cache it defensively.
+- **Protect the device key pair:** Generate it with high-entropy sources, store the private key in Secure Enclave/Keystore/KeyChain, and never export it. Rotate/re-enroll immediately if compromise is suspected.
+- **Enforce challenge integrity:** When a confirm token arrives, compare the `cid`, `sub`, and `client_id` against locally stored state and discard anything unexpected or expired.
+- **Secure transport:** Call the Keycloak endpoints only over TLS, validate certificates (no user-controlled CA overrides), and pin if your threat model requires it.
+- **Harden local state:** Keep the pseudonymous ↔ real user mapping, firebase identifiers, and enrollment metadata in encrypted storage with OS-level protection.
+- **Surface errors to users:** Treat 4xx responses (expired, invalid signature, nonce mismatch) as security events, notifying the user and requiring a fresh enrollment or login attempt rather than silently retrying.

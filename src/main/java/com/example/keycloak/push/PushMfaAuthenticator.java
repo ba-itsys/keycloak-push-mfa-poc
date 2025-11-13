@@ -13,7 +13,6 @@ import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +39,15 @@ public class PushMfaAuthenticator implements Authenticator {
         }
 
         PushChallengeStore challengeStore = new PushChallengeStore(context.getSession());
+        int pendingChallenges = challengeStore.countPendingAuthentication(context.getRealm().getId(), context.getUser().getId());
+        if (pendingChallenges >= PushMfaConstants.MAX_PENDING_AUTH_CHALLENGES) {
+            LOG.debugf("User %s already has %d pending push challenges; refusing new one",
+                context.getUser().getId(), pendingChallenges);
+            context.failureChallenge(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR,
+                context.form().setError("push-mfa-too-many-challenges")
+                    .createErrorPage(Response.Status.TOO_MANY_REQUESTS));
+            return;
+        }
         byte[] challengeBytes = new byte[0];
 
         PushChallenge pushChallenge = challengeStore.create(
@@ -47,18 +55,22 @@ public class PushMfaAuthenticator implements Authenticator {
             context.getUser().getId(),
             challengeBytes,
             PushChallenge.Type.AUTHENTICATION,
-            Duration.ofSeconds(PushMfaConstants.CHALLENGE_TTL_SECONDS),
+            PushMfaConstants.CHALLENGE_TTL,
             credential.getId());
 
         authSession.setAuthNote(PushMfaConstants.CHALLENGE_NOTE, pushChallenge.getId());
 
+        String clientId = context.getAuthenticationSession().getClient() != null
+            ? context.getAuthenticationSession().getClient().getClientId()
+            : null;
         String confirmToken = PushConfirmTokenBuilder.build(
             context.getSession(),
             context.getRealm(),
             credentialData.getPseudonymousUserId(),
             pushChallenge.getId(),
-            context.getUriInfo().getBaseUri());
-        TokenLogHelper.logJwt("confirm-token", confirmToken);
+            pushChallenge.getExpiresAt(),
+            context.getUriInfo().getBaseUri(),
+            clientId);
 
         LOG.debugf("Push message prepared {version=%s,type=%s,pseudonymousUserId=%s}",
             PushMfaConstants.PUSH_MESSAGE_VERSION,
@@ -71,7 +83,8 @@ public class PushMfaAuthenticator implements Authenticator {
             context.getUser(),
             confirmToken,
             credentialData.getPseudonymousUserId(),
-            pushChallenge.getId());
+            pushChallenge.getId(),
+            clientId);
         showWaitingForm(context, pushChallenge.getId(), credentialData, confirmToken);
     }
 
@@ -126,6 +139,9 @@ public class PushMfaAuthenticator implements Authenticator {
             case PENDING -> {
                 CredentialModel credentialModel = resolveCredentialForChallenge(context.getUser(), current);
                 PushCredentialData credentialData = credentialModel == null ? null : PushCredentialService.readCredentialData(credentialModel);
+                String clientId = context.getAuthenticationSession().getClient() != null
+                    ? context.getAuthenticationSession().getClient().getClientId()
+                    : null;
                 String confirmToken = (credentialModel == null || credentialData == null || credentialData.getPseudonymousUserId() == null)
                     ? null
                     : PushConfirmTokenBuilder.build(
@@ -133,7 +149,9 @@ public class PushMfaAuthenticator implements Authenticator {
                         context.getRealm(),
                         credentialData.getPseudonymousUserId(),
                         current.getId(),
-                        context.getUriInfo().getBaseUri());
+                        current.getExpiresAt(),
+                        context.getUriInfo().getBaseUri(),
+                        clientId);
 
                 showWaitingForm(context, current.getId(), credentialData, confirmToken);
             }

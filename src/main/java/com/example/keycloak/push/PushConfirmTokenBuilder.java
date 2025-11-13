@@ -24,7 +24,9 @@ final class PushConfirmTokenBuilder {
                         RealmModel realm,
                         String pseudonymousUserId,
                         String challengeId,
-                        URI baseUri) {
+                        Instant challengeExpiresAt,
+                        URI baseUri,
+                        String clientId) {
         KeyWrapper key = session.keys().getActiveKey(realm, KeyUse.SIG, Algorithm.RS256.toString());
         if (key == null || key.getPrivateKey() == null) {
             throw new IllegalStateException("No active signing key for realm");
@@ -41,8 +43,12 @@ final class PushConfirmTokenBuilder {
         payload.put("typ", PushMfaConstants.PUSH_MESSAGE_TYPE);
         payload.put("ver", PushMfaConstants.PUSH_MESSAGE_VERSION);
         payload.put("cid", challengeId);
-        payload.put("iat", Instant.now().getEpochSecond());
-        payload.put("exp", Instant.now().plusSeconds(300).getEpochSecond());
+        if (clientId != null) {
+            payload.put("client_id", clientId);
+        }
+        Instant issuedAt = Instant.now();
+        payload.put("iat", issuedAt.getEpochSecond());
+        payload.put("exp", challengeExpiresAt.getEpochSecond());
 
         Algorithm algorithm = Algorithm.RS256;
         if (key.getAlgorithm() != null) {
