@@ -66,6 +66,9 @@ public class PushMfaAuthenticator implements Authenticator {
 
         authSession.setAuthNote(PushMfaConstants.CHALLENGE_NOTE, pushChallenge.getId());
 
+        String clientId = context.getAuthenticationSession().getClient() != null
+            ? context.getAuthenticationSession().getClient().getClientId()
+            : null;
         String confirmToken = PushConfirmTokenBuilder.build(
             context.getSession(),
             context.getRealm(),
