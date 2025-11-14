@@ -164,10 +164,6 @@ ENROLL_RESPONSE=$(curl -s -X POST \
   "$ENROLL_COMPLETE_URL")
 
 echo "$ENROLL_RESPONSE" | jq
-CREDENTIAL_ID=$(echo "$ENROLL_RESPONSE" | jq -r '.credentialId // empty')
-if [[ -n $CREDENTIAL_ID ]]; then
-  echo ">> Credential stored as $CREDENTIAL_ID"
-fi
 
 PRIVATE_KEY_B64=$(base64 < "$DEVICE_PRIVATE_KEY_PATH" | tr -d '\n')
 PUBLIC_KEY_B64=$(base64 < "$DEVICE_PUBLIC_KEY_PATH" | tr -d '\n')
@@ -187,9 +183,8 @@ jq -n \
   --arg firebaseId "$FIREBASE_ID" \
   --arg keyId "$DEVICE_KEY_ID" \
   --arg deviceLabel "$DEVICE_LABEL" \
-  --arg credentialId "$CREDENTIAL_ID" \
   --argjson publicJwk "$PUBLIC_JWK" \
-  '{userId:$userId, pseudonymousUserId:$pseudonymousUserId, tokenEndpoint:$tokenEndpoint, clientId:$clientId, clientSecret:$clientSecret, privateKey:$privateKey, publicKey:$publicKey, deviceType:$deviceType, firebaseId:$firebaseId, keyId:$keyId, deviceLabel:$deviceLabel, publicJwk:$publicJwk, credentialId:$credentialId}' > "$STATE_FILE"
+  '{userId:$userId, pseudonymousUserId:$pseudonymousUserId, tokenEndpoint:$tokenEndpoint, clientId:$clientId, clientSecret:$clientSecret, privateKey:$privateKey, publicKey:$publicKey, deviceType:$deviceType, firebaseId:$firebaseId, keyId:$keyId, deviceLabel:$deviceLabel, publicJwk:$publicJwk}' > "$STATE_FILE"
 
 echo ">> Device state stored in $STATE_FILE"
 popd >/dev/null

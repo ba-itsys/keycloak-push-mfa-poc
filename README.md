@@ -107,8 +107,7 @@ Keycloak verifies the signature using `cnf.jwk`, persists the credential (JWK, a
 
 ```json
 {
-  "status": "enrolled",
-  "credentialId": "e96f7db9-6d4e-4e98-8e8c-856f0a6ae590"
+  "status": "enrolled"
 }
 ```
 

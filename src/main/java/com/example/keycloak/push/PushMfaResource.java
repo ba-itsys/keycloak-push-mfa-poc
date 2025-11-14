@@ -132,7 +132,7 @@ public class PushMfaResource {
         
         TokenLogHelper.logJwt("enroll-device-token", request.token());
 
-        return Response.ok(Map.of("status", "enrolled", "credentialId", credentialModel.getId())).build();
+        return Response.ok(Map.of("status", "enrolled")).build();
     }
 
     @GET
