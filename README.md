@@ -147,7 +147,8 @@ Authorization: Bearer <device-service-token>
     {
       "userId": "87fa1c21-1b1e-4af8-98b1-1df2e90d3c3d",
       "cid": "1a6d6a0b-3385-4772-8eb8-0d2f4dbd25a4",
-      "expiresAt": "2025-11-14T13:16:12.902Z"
+      "expiresAt": "2025-11-14T13:16:12.902Z",
+      "clientId": "test-app"
     }
   ]
 }
