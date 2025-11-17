@@ -42,6 +42,7 @@ This project extends Keycloak with a push-style second factor that mimics passke
      "deviceType": "ios",
      "firebaseId": "mock-fcm-token",
      "pseudonymousUserId": "device-alias-bf7a9f52",
+     "deviceId": "device-3d7a4e65-9bd6-4df3-9c7d-2b3e0ce9e1a5",
      "deviceLabel": "Demo Phone",
      "cnf": {
        "jwk": {
@@ -81,6 +82,7 @@ This project extends Keycloak with a push-style second factor that mimics passke
      "_comment": "login approval payload (device -> realm)",
      "cid": "1a6d6a0b-3385-4772-8eb8-0d2f4dbd25a4",
      "sub": "87fa1c21-1b1e-4af8-98b1-1df2e90d3c3d",
+     "deviceId": "device-3d7a4e65-9bd6-4df3-9c7d-2b3e0ce9e1a5",
      "action": "approve",
      "exp": 1731403020
    }
@@ -112,21 +114,17 @@ This project extends Keycloak with a push-style second factor that mimics passke
 
 ## Custom Keycloak APIs
 
-All endpoints live under `/realms/push-mfa/push-mfa` and require a bearer token obtained by the device client (`push-device-client`) via client credentials.
+All endpoints live under `/realms/push-mfa/push-mfa` and require an Authorization header carrying the device-signed JWT (the same structure shown in the enrollment/login sections). There is no Keycloak-issued service token—authentication is fully tied to the device key material.
 
 ### Complete enrollment
 
 ```
 POST /realms/push-mfa/push-mfa/enroll/complete
-Authorization: Bearer <device-service-token>
-Content-Type: application/json
-
-{
-  "token": "<device-signed enrollment JWT>",
-}
+Authorization: Bearer <device-signed enrollment JWT>
+Content-Length: 0
 ```
 
-Keycloak verifies the signature using `cnf.jwk`, persists the credential (JWK, algorithm, deviceType, firebaseId, pseudonymousUserId, deviceLabel), and resolves the enrollment challenge. The `deviceLabel` is read from the JWT payload (falls back to `PushMfaConstants.USER_CREDENTIAL_DISPLAY_NAME` when absent).
+Keycloak verifies the signature using `cnf.jwk`, persists the credential (JWK, algorithm, deviceType, firebaseId, pseudonymousUserId, deviceId, deviceLabel), and resolves the enrollment challenge. The `deviceLabel` is read from the JWT payload (falls back to `PushMfaConstants.USER_CREDENTIAL_DISPLAY_NAME` when absent). No JSON body is necessary because every attribute lives inside the device token.
 
 ```json
 {
@@ -138,8 +136,10 @@ Keycloak verifies the signature using `cnf.jwk`, persists the credential (JWK, a
 
 ```
 GET /realms/push-mfa/push-mfa/login/pending?userId=<keycloak-user-id>
-Authorization: Bearer <device-service-token>
+Authorization: Bearer <device-assertion JWT>
 ```
+
+The Authorization header is a short-lived JWT signed with the device key that at least carries `sub` (Keycloak user id), `deviceId`, and `exp`. Keycloak verifies the signature using the stored credential and only returns pending challenges tied to that device id.
 
 ```json
 {
@@ -154,19 +154,17 @@ Authorization: Bearer <device-service-token>
 }
 ```
 
+If the credential referenced by the device assertion does not own an outstanding challenge, the array is empty even if other devices for the same user are awaiting approval.
+
 ### Approve or deny a challenge
 
 ```
 POST /realms/push-mfa/push-mfa/login/challenges/{cid}/respond
-Authorization: Bearer <device-service-token>
-Content-Type: application/json
-
-{
-  "token": "<device-signed login JWT>",
-}
+Authorization: Bearer <device-signed login JWT>
+Content-Length: 0
 ```
 
-Keycloak verifies the signature with the stored device JWK, ensures `cid`/`sub` match, and inspects the signed `action` claim. `"action": "approve"` marks the challenge as approved; `"action": "deny"` marks it as denied. Any other value is rejected.
+Keycloak verifies the signature with the stored device JWK, ensures `cid`/`sub` match, checks that the signed `deviceId` matches the credential on record, and inspects the signed `action` claim. `"action": "approve"` marks the challenge as approved; `"action": "deny"` marks it as denied. Any other value is rejected. Since the Authorization header carries the login approval JWT, no request body is required.
 
 ```json
 { "status": "approved" }
@@ -178,6 +176,7 @@ Keycloak verifies the signature with the stored device JWK, ensures `cid`/`sub` 
 - **Device key material:** Generate a key pair per device, select a unique `kid`, and keep the private key in the device secure storage. Persist and exchange the public component exclusively as a JWK (the same document posted in `cnf.jwk`).
 - **State to store locally:** pseudonymous user id ↔ real Keycloak user id mapping, the device key pair, the `kid`, `deviceType`, `firebaseId`, preferred `deviceLabel`, and any metadata needed to post to Keycloak again.
 - **Confirm token handling:** When the confirm token arrives through Firebase (or when the user copies it from the waiting UI), decode the JWT, extract `cid` and `sub`, and either call `/login/pending` (optional) or immediately sign the login approval JWT and post it to `/login/challenges/{cid}/respond`.
+- **Pending challenge discovery:** Before calling `/login/pending`, mint a short-lived JWT with the device key that includes `sub`, `deviceId`, and `exp`, and send it as the Authorization header so Keycloak can scope the response to that physical device.
 - **Error handling:** Enrollment and login requests return structured error responses (`400`, `403`, or `404`) when the JWTs are invalid, expired, or mismatched. Surface those errors to the user to re-trigger the flow if necessary.
 - **Key rotation / Firebase changes:** Rotating the device key pair or updating the `firebaseId` would require dedicated Keycloak endpoints to update the stored credential; those flows are out of scope for this PoC, so the workaround is to delete the credential and re-enroll.
 

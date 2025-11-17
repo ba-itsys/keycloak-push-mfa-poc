@@ -6,13 +6,12 @@ usage() {
 Usage: scripts/enroll.sh <enrollment-token>
 
 Environment overrides:
-  TOKEN_ENDPOINT           OIDC token endpoint (default: http://localhost:8080/realms/push-mfa/protocol/openid-connect/token)
-  DEVICE_CLIENT_ID         Client ID to request the device-access token (default: push-device-client)
-  DEVICE_CLIENT_SECRET     Client secret for the device client (default: device-client-secret)
-  ENROLL_COMPLETE_URL      Enrollment completion endpoint (default: http://localhost:8080/realms/push-mfa/push-mfa/enroll/complete)
+  REALM_BASE               Realm base URL (default: http://localhost:8080/realms/push-mfa)
+  ENROLL_COMPLETE_URL      Enrollment completion endpoint (default: <REALM_BASE>/push-mfa/enroll/complete)
   DEVICE_TYPE              Device type stored with the credential (default: ios)
   FIREBASE_ID              Firebase/FCM identifier (default: mock-fcm-token)
   PSEUDONYMOUS_ID          Pseudonymous user identifier (default: generated UUID)
+  DEVICE_ID                Unique device id stored with the credential (default: generated UUID)
   DEVICE_LABEL             Display label stored with the credential (default: "Demo Phone")
 EOF
 }
@@ -45,15 +44,18 @@ sys.stdout.buffer.write(base64.urlsafe_b64decode(s))'
 }
 
 
-TOKEN_ENDPOINT=${TOKEN_ENDPOINT:-http://localhost:8080/realms/push-mfa/protocol/openid-connect/token}
-DEVICE_CLIENT_ID=${DEVICE_CLIENT_ID:-push-device-client}
-DEVICE_CLIENT_SECRET=${DEVICE_CLIENT_SECRET:-device-client-secret}
-ENROLL_COMPLETE_URL=${ENROLL_COMPLETE_URL:-http://localhost:8080/realms/push-mfa/push-mfa/enroll/complete}
+REALM_BASE=${REALM_BASE:-http://localhost:8080/realms/push-mfa}
+ENROLL_COMPLETE_URL=${ENROLL_COMPLETE_URL:-$REALM_BASE/push-mfa/enroll/complete}
 DEVICE_TYPE=${DEVICE_TYPE:-ios}
 FIREBASE_ID=${FIREBASE_ID:-mock-fcm-token}
 PSEUDONYMOUS_ID=${PSEUDONYMOUS_ID:-$(python3 - <<'PY'
 import uuid
 print(f"device-alias-{uuid.uuid4()}")
+PY
+)}
+DEVICE_ID=${DEVICE_ID:-$(python3 - <<'PY'
+import uuid
+print(f"device-{uuid.uuid4()}")
 PY
 )}
 DEVICE_KEY_ID=${DEVICE_KEY_ID:-$(python3 - <<'PY'
@@ -76,17 +78,6 @@ cleanup() {
 trap cleanup EXIT
 
 pushd "$WORKDIR" >/dev/null
-
-echo ">> Requesting device access token"
-DEVICE_TOKEN=$(curl -s -X POST "$TOKEN_ENDPOINT" \
-  -d "client_id=$DEVICE_CLIENT_ID" \
-  -d "client_secret=$DEVICE_CLIENT_SECRET" \
-  -d "grant_type=client_credentials" | jq -r '.access_token')
-
-if [[ -z ${DEVICE_TOKEN:-} || ${DEVICE_TOKEN} == "null" ]]; then
-  echo "error: failed to obtain device access token" >&2
-  exit 1
-fi
 
 echo ">> Decoding enrollment challenge"
 ENROLL_PAYLOAD=$(echo -n "$ENROLL_TOKEN" | cut -d'.' -f2 | b64urldecode)
@@ -142,10 +133,11 @@ ENROLL_PAYLOAD_JSON=$(jq -n \
   --arg deviceType "$DEVICE_TYPE" \
   --arg firebaseId "$FIREBASE_ID" \
   --arg pseudonymousUserId "$PSEUDONYMOUS_ID" \
+  --arg deviceId "$DEVICE_ID" \
   --arg deviceLabel "$DEVICE_LABEL" \
   --arg exp "$EXPIRY" \
   --argjson cnf "$(jq -c '{"jwk": .}' device-jwk.json)" \
-  '{"enrollmentId": $enrollmentId, "nonce": $nonce, "sub": $sub, "deviceType": $deviceType, "firebaseId": $firebaseId, "pseudonymousUserId": $pseudonymousUserId, "deviceLabel": $deviceLabel, "exp": ($exp|tonumber), "cnf": $cnf}')
+  '{"enrollmentId": $enrollmentId, "nonce": $nonce, "sub": $sub, "deviceType": $deviceType, "firebaseId": $firebaseId, "pseudonymousUserId": $pseudonymousUserId, "deviceId": $deviceId, "deviceLabel": $deviceLabel, "exp": ($exp|tonumber), "cnf": $cnf}')
 
 ENROLL_HEADER_B64=$(printf '{"alg":"RS256","kid":"%s","typ":"JWT"}' "$DEVICE_KEY_ID" | b64urlencode)
 ENROLL_PAYLOAD_B64=$(printf '%s' "$ENROLL_PAYLOAD_JSON" | b64urlencode)
@@ -154,14 +146,8 @@ DEVICE_ENROLL_TOKEN="$ENROLL_HEADER_B64.$ENROLL_PAYLOAD_B64.$ENROLL_SIGNATURE_B6
 
 echo ">> Submitting enrollment reply"
 echo $ENROLL_PAYLOAD_JSON
-ENROLL_COMPLETE_BODY=$(jq -n \
-  --arg token "$DEVICE_ENROLL_TOKEN" \
-  '{"token": $token}')
-
 ENROLL_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $DEVICE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$ENROLL_COMPLETE_BODY" \
+  -H "Authorization: Bearer $DEVICE_ENROLL_TOKEN" \
   "$ENROLL_COMPLETE_URL")
 
 echo "$ENROLL_RESPONSE" | jq
@@ -175,9 +161,8 @@ PUBLIC_JWK=$(cat device-jwk.json)
 jq -n \
   --arg userId "$USER_ID" \
   --arg pseudonymousUserId "$PSEUDONYMOUS_ID" \
-  --arg tokenEndpoint "$TOKEN_ENDPOINT" \
-  --arg clientId "$DEVICE_CLIENT_ID" \
-  --arg clientSecret "$DEVICE_CLIENT_SECRET" \
+  --arg deviceId "$DEVICE_ID" \
+  --arg realmBase "$REALM_BASE" \
   --arg privateKey "$PRIVATE_KEY_B64" \
   --arg publicKey "$PUBLIC_KEY_B64" \
   --arg deviceType "$DEVICE_TYPE" \
@@ -185,7 +170,7 @@ jq -n \
   --arg keyId "$DEVICE_KEY_ID" \
   --arg deviceLabel "$DEVICE_LABEL" \
   --argjson publicJwk "$PUBLIC_JWK" \
-  '{userId:$userId, pseudonymousUserId:$pseudonymousUserId, tokenEndpoint:$tokenEndpoint, clientId:$clientId, clientSecret:$clientSecret, privateKey:$privateKey, publicKey:$publicKey, deviceType:$deviceType, firebaseId:$firebaseId, keyId:$keyId, deviceLabel:$deviceLabel, publicJwk:$publicJwk}' > "$STATE_FILE"
+  '{userId:$userId, pseudonymousUserId:$pseudonymousUserId, deviceId:$deviceId, realmBase:$realmBase, privateKey:$privateKey, publicKey:$publicKey, deviceType:$deviceType, firebaseId:$firebaseId, keyId:$keyId, deviceLabel:$deviceLabel, publicJwk:$publicJwk}' > "$STATE_FILE"
 
 echo ">> Device state stored in $STATE_FILE"
 popd >/dev/null

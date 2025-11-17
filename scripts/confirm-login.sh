@@ -6,7 +6,7 @@ usage() {
 Usage: scripts/confirm-login.sh <confirm-token>
 
 Environment overrides:
-  TOKEN_ENDPOINT           OIDC token endpoint (default: http://localhost:8080/realms/push-mfa/protocol/openid-connect/token)
+  REALM_BASE               Realm base URL (default: http://localhost:8080/realms/push-mfa). Falls back to stored value.
   DEVICE_STATE_DIR         Directory storing device state from enroll.sh (default: scripts/device-state)
   LOGIN_ACTION             Action encoded in the device token (approve or deny, default: approve)
 EOF
@@ -67,14 +67,14 @@ fi
 
 STATE=$(cat "$STATE_FILE")
 USER_ID=$(echo "$STATE" | jq -r '.userId')
-CLIENT_ID=$(echo "$STATE" | jq -r '.clientId')
-CLIENT_SECRET=$(echo "$STATE" | jq -r '.clientSecret')
+DEVICE_ID=$(echo "$STATE" | jq -r '.deviceId')
 PRIVATE_KEY_B64=$(echo "$STATE" | jq -r '.privateKey')
 KID=$(echo "$STATE" | jq -r '.keyId // "push-device-client-key"')
-TOKEN_ENDPOINT_DEFAULT=$(echo "$STATE" | jq -r '.tokenEndpoint')
-TOKEN_ENDPOINT=${TOKEN_ENDPOINT:-$TOKEN_ENDPOINT_DEFAULT}
+REALM_BASE_DEFAULT=$(echo "$STATE" | jq -r '.realmBase // empty')
+REALM_BASE=${REALM_BASE:-$REALM_BASE_DEFAULT}
+REALM_BASE=${REALM_BASE:-http://localhost:8080/realms/push-mfa}
 
-if [[ -z $USER_ID || -z $CLIENT_ID || -z $CLIENT_SECRET || -z $PRIVATE_KEY_B64 ]]; then
+if [[ -z $USER_ID || -z $DEVICE_ID || -z $PRIVATE_KEY_B64 ]]; then
   echo "error: device state missing required fields" >&2
   exit 1
 fi
@@ -88,22 +88,20 @@ with open(path, 'wb') as fh:
     fh.write(base64.b64decode(data))
 PY
 
-echo ">> Requesting device access token"
-DEVICE_TOKEN=$(curl -s -X POST "$TOKEN_ENDPOINT" \
-  -d "client_id=$CLIENT_ID" \
-  -d "client_secret=$CLIENT_SECRET" \
-  -d "grant_type=client_credentials" | jq -r '.access_token')
-
-if [[ -z ${DEVICE_TOKEN:-} || ${DEVICE_TOKEN} == "null" ]]; then
-  echo "error: failed to obtain device token" >&2
-  exit 1
-fi
-
-REALM_BASE=$(echo "$TOKEN_ENDPOINT" | sed 's#/protocol/.*##')
 PENDING_URL="$REALM_BASE/push-mfa/login/pending"
 echo ">> Demo: listing pending challenges (response is informational)"
+DEVICE_ASSERTION_EXP=$(($(date +%s) + 60))
+DEVICE_ASSERTION_PAYLOAD=$(jq -n \
+  --arg sub "$USER_ID" \
+  --arg deviceId "$DEVICE_ID" \
+  --arg exp "$DEVICE_ASSERTION_EXP" \
+  '{"sub": $sub, "deviceId": $deviceId, "exp": ($exp|tonumber)}')
+DEVICE_ASSERTION_HEADER_B64=$(printf '{"alg":"RS256","kid":"%s","typ":"JWT"}' "$KID" | b64urlencode)
+DEVICE_ASSERTION_PAYLOAD_B64=$(printf '%s' "$DEVICE_ASSERTION_PAYLOAD" | b64urlencode)
+DEVICE_ASSERTION_SIGNATURE_B64=$(printf '%s' "$DEVICE_ASSERTION_HEADER_B64.$DEVICE_ASSERTION_PAYLOAD_B64" | openssl dgst -binary -sha256 -sign "$KEY_FILE" | b64urlencode)
+DEVICE_ASSERTION_TOKEN="$DEVICE_ASSERTION_HEADER_B64.$DEVICE_ASSERTION_PAYLOAD_B64.$DEVICE_ASSERTION_SIGNATURE_B64"
 curl -s -G \
-  -H "Authorization: Bearer $DEVICE_TOKEN" \
+  -H "Authorization: Bearer $DEVICE_ASSERTION_TOKEN" \
   --data-urlencode "userId=$USER_ID" \
   "$PENDING_URL" | jq
 
@@ -112,23 +110,18 @@ LOGIN_ACTION=${LOGIN_ACTION:-approve}
 LOGIN_PAYLOAD=$(jq -n \
   --arg cid "$CHALLENGE_ID" \
   --arg sub "$USER_ID" \
+  --arg deviceId "$DEVICE_ID" \
   --arg exp "$EXPIRY" \
   --arg action "$LOGIN_ACTION" \
-  '{"cid": $cid, "sub": $sub, "exp": ($exp|tonumber), "action": $action}')
+  '{"cid": $cid, "sub": $sub, "deviceId": $deviceId, "exp": ($exp|tonumber), "action": ($action|lower)}')
 
 LOGIN_HEADER_B64=$(printf '{"alg":"RS256","kid":"%s","typ":"JWT"}' "$KID" | b64urlencode)
 LOGIN_PAYLOAD_B64=$(printf '%s' "$LOGIN_PAYLOAD" | b64urlencode)
 LOGIN_SIGNATURE_B64=$(printf '%s' "$LOGIN_HEADER_B64.$LOGIN_PAYLOAD_B64" | openssl dgst -binary -sha256 -sign "$KEY_FILE" | b64urlencode)
 DEVICE_LOGIN_TOKEN="$LOGIN_HEADER_B64.$LOGIN_PAYLOAD_B64.$LOGIN_SIGNATURE_B64"
 
-APPROVE_PAYLOAD=$(jq -n \
-  --arg token "$DEVICE_LOGIN_TOKEN" \
-  '{"token": $token}')
-
 RESPOND_URL="$REALM_BASE/push-mfa/login/challenges/$CHALLENGE_ID/respond"
 echo ">> Responding to challenge"
 curl -s -X POST \
-  -H "Authorization: Bearer $DEVICE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$APPROVE_PAYLOAD" \
+  -H "Authorization: Bearer $DEVICE_LOGIN_TOKEN" \
   "$RESPOND_URL" | jq

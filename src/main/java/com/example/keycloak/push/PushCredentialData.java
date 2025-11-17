@@ -11,6 +11,7 @@ public class PushCredentialData {
     private final String deviceType;
     private final String firebaseId;
     private final String pseudonymousUserId;
+    private final String deviceId;
 
     @JsonCreator
     public PushCredentialData(@JsonProperty("publicKeyJwk") String publicKeyJwk,
@@ -18,13 +19,15 @@ public class PushCredentialData {
                               @JsonProperty("createdAt") long createdAt,
                               @JsonProperty("deviceType") String deviceType,
                               @JsonProperty("firebaseId") String firebaseId,
-                              @JsonProperty("pseudonymousUserId") String pseudonymousUserId) {
+                              @JsonProperty("pseudonymousUserId") String pseudonymousUserId,
+                              @JsonProperty("deviceId") String deviceId) {
         this.publicKeyJwk = publicKeyJwk;
         this.algorithm = algorithm;
         this.createdAt = createdAt;
         this.deviceType = deviceType;
         this.firebaseId = firebaseId;
         this.pseudonymousUserId = pseudonymousUserId;
+        this.deviceId = deviceId;
     }
 
     public String getPublicKeyJwk() {
@@ -49,5 +52,9 @@ public class PushCredentialData {
 
     public String getPseudonymousUserId() {
         return pseudonymousUserId;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
     }
 }
