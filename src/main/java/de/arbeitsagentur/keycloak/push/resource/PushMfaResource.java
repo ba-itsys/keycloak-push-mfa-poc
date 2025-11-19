@@ -7,9 +7,6 @@ import de.arbeitsagentur.keycloak.push.challenge.PushChallengeStatus;
 import de.arbeitsagentur.keycloak.push.challenge.PushChallengeStore;
 import de.arbeitsagentur.keycloak.push.credential.PushCredentialData;
 import de.arbeitsagentur.keycloak.push.credential.PushCredentialService;
-import de.arbeitsagentur.keycloak.push.service.PushNotificationService;
-import de.arbeitsagentur.keycloak.push.token.PushConfirmTokenBuilder;
-import de.arbeitsagentur.keycloak.push.token.PushEnrollmentTokenBuilder;
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
 import de.arbeitsagentur.keycloak.push.util.PushSignatureVerifier;
 import de.arbeitsagentur.keycloak.push.util.TokenLogHelper;
@@ -32,6 +29,16 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.jboss.logging.Logger;
 import org.keycloak.TokenVerifier;
 import org.keycloak.TokenVerifier.Predicate;
@@ -54,17 +61,6 @@ import org.keycloak.util.JWKSUtils;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.util.TokenUtil;
 
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.time.Instant;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-
 @Path("/")
 @Produces(MediaType.APPLICATION_JSON)
 public class PushMfaResource {
@@ -83,10 +79,11 @@ public class PushMfaResource {
     @GET
     @Path("enroll/challenges/{challengeId}/events")
     @Produces(MediaType.SERVER_SENT_EVENTS)
-    public void streamEnrollmentEvents(@PathParam("challengeId") String challengeId,
-                                       @QueryParam("secret") String secret,
-                                       @jakarta.ws.rs.core.Context SseEventSink sink,
-                                       @jakarta.ws.rs.core.Context Sse sse) {
+    public void streamEnrollmentEvents(
+            @PathParam("challengeId") String challengeId,
+            @QueryParam("secret") String secret,
+            @jakarta.ws.rs.core.Context SseEventSink sink,
+            @jakarta.ws.rs.core.Context Sse sse) {
         if (sink == null || sse == null) {
             return;
         }
@@ -122,8 +119,8 @@ public class PushMfaResource {
         UserModel user = getUser(userId);
 
         String enrollmentId = require(jsonText(payload, "enrollmentId"), "enrollmentId");
-        PushChallenge challenge = challengeStore.get(enrollmentId)
-            .orElseThrow(() -> new NotFoundException("Challenge not found"));
+        PushChallenge challenge =
+                challengeStore.get(enrollmentId).orElseThrow(() -> new NotFoundException("Challenge not found"));
 
         if (challenge.getType() != PushChallenge.Type.ENROLLMENT) {
             throw new BadRequestException("Challenge is not for enrollment");
@@ -163,19 +160,18 @@ public class PushMfaResource {
         String deviceId = require(jsonText(payload, "deviceId"), "deviceId");
 
         String labelClaim = jsonText(payload, "deviceLabel");
-        String label = labelClaim == null || labelClaim.isBlank()
-            ? PushMfaConstants.USER_CREDENTIAL_DISPLAY_NAME
-            : labelClaim;
+        String label =
+                labelClaim == null || labelClaim.isBlank() ? PushMfaConstants.USER_CREDENTIAL_DISPLAY_NAME : labelClaim;
 
         PushCredentialData data = new PushCredentialData(
-            jwkNode.toString(),
-            algorithm.toString(),
-            Instant.now().toEpochMilli(),
-            deviceType,
-            pushProviderId,
-            pushProviderType,
-            pseudonymousUserId,
-            deviceId);
+                jwkNode.toString(),
+                algorithm.toString(),
+                Instant.now().toEpochMilli(),
+                deviceType,
+                pushProviderId,
+                pushProviderType,
+                pseudonymousUserId,
+                deviceId);
         CredentialModel credentialModel = PushCredentialService.createCredential(user, label, data);
         challengeStore.resolve(challenge.getId(), PushChallengeStatus.APPROVED);
 
@@ -184,9 +180,8 @@ public class PushMfaResource {
 
     @GET
     @Path("login/pending")
-    public Response listPendingChallenges(@jakarta.ws.rs.QueryParam("userId") String userId,
-                                          @Context HttpHeaders headers,
-                                          @Context UriInfo uriInfo) {
+    public Response listPendingChallenges(
+            @jakarta.ws.rs.QueryParam("userId") String userId, @Context HttpHeaders headers, @Context UriInfo uriInfo) {
         String normalizedUserId = require(userId, "userId");
         DeviceAssertion device = authenticateDevice(headers, uriInfo, "GET");
         if (!Objects.equals(device.user().getId(), normalizedUserId)) {
@@ -195,29 +190,31 @@ public class PushMfaResource {
 
         CredentialModel deviceCredential = device.credential();
 
-        List<LoginChallenge> pending = challengeStore.findPendingForUser(realm().getId(), device.user().getId()).stream()
-            .filter(challenge -> challenge.getType() == PushChallenge.Type.AUTHENTICATION)
-            .filter(challenge -> Objects.equals(challenge.getCredentialId(), deviceCredential.getId()))
-            .filter(this::ensureAuthenticationSessionActive)
-            .map(challenge -> new LoginChallenge(
-                device.user().getId(),
-                challenge.getId(),
-                challenge.getExpiresAt().getEpochSecond(),
-                challenge.getClientId()))
-            .toList();
+        List<LoginChallenge> pending =
+                challengeStore.findPendingForUser(realm().getId(), device.user().getId()).stream()
+                        .filter(challenge -> challenge.getType() == PushChallenge.Type.AUTHENTICATION)
+                        .filter(challenge -> Objects.equals(challenge.getCredentialId(), deviceCredential.getId()))
+                        .filter(this::ensureAuthenticationSessionActive)
+                        .map(challenge -> new LoginChallenge(
+                                device.user().getId(),
+                                challenge.getId(),
+                                challenge.getExpiresAt().getEpochSecond(),
+                                challenge.getClientId()))
+                        .toList();
         return Response.ok(Map.of("challenges", pending)).build();
     }
 
     @POST
     @Path("login/challenges/{cid}/respond")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response respondToChallenge(@PathParam("cid") String cid,
-                                       ChallengeRespondRequest request,
-                                       @Context HttpHeaders headers,
-                                       @Context UriInfo uriInfo) {
+    public Response respondToChallenge(
+            @PathParam("cid") String cid,
+            ChallengeRespondRequest request,
+            @Context HttpHeaders headers,
+            @Context UriInfo uriInfo) {
         String challengeId = require(cid, "cid");
-        PushChallenge challenge = challengeStore.get(challengeId)
-            .orElseThrow(() -> new NotFoundException("Challenge not found"));
+        PushChallenge challenge =
+                challengeStore.get(challengeId).orElseThrow(() -> new NotFoundException("Challenge not found"));
 
         String challengeUserId = challenge.getUserId();
 
@@ -233,7 +230,8 @@ public class PushMfaResource {
         }
 
         CredentialModel credentialModel = assertion.credential();
-        if (challenge.getCredentialId() != null && !Objects.equals(challenge.getCredentialId(), credentialModel.getId())) {
+        if (challenge.getCredentialId() != null
+                && !Objects.equals(challenge.getCredentialId(), credentialModel.getId())) {
             throw new ForbiddenException("Authentication token device mismatch");
         }
 
@@ -258,8 +256,8 @@ public class PushMfaResource {
         }
 
         String tokenAction = Optional.ofNullable(jsonText(payload, "action"))
-            .map(String::toLowerCase)
-            .orElse(PushMfaConstants.CHALLENGE_APPROVE);
+                .map(String::toLowerCase)
+                .orElse(PushMfaConstants.CHALLENGE_APPROVE);
 
         String tokenChallengeId = require(jsonText(payload, "cid"), "cid");
         if (!Objects.equals(tokenChallengeId, challengeId)) {
@@ -302,10 +300,11 @@ public class PushMfaResource {
     @GET
     @Path("login/challenges/{cid}/events")
     @Produces(MediaType.SERVER_SENT_EVENTS)
-    public void streamLoginChallengeEvents(@PathParam("cid") String challengeId,
-                                           @QueryParam("secret") String secret,
-                                           @Context SseEventSink sink,
-                                           @Context Sse sse) {
+    public void streamLoginChallengeEvents(
+            @PathParam("cid") String challengeId,
+            @QueryParam("secret") String secret,
+            @Context SseEventSink sink,
+            @Context Sse sse) {
         if (sink == null || sse == null) {
             return;
         }
@@ -316,9 +315,8 @@ public class PushMfaResource {
     @PUT
     @Path("device/push-provider")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response updateDevicePushProvider(@Context HttpHeaders headers,
-                                             @Context UriInfo uriInfo,
-                                             UpdatePushProviderRequest request) {
+    public Response updateDevicePushProvider(
+            @Context HttpHeaders headers, @Context UriInfo uriInfo, UpdatePushProviderRequest request) {
         DeviceAssertion device = authenticateDevice(headers, uriInfo, "PUT");
         String pushProviderId = require(request.pushProviderId(), "pushProviderId");
         String pushProviderType = request.pushProviderType();
@@ -326,32 +324,34 @@ public class PushMfaResource {
         if (pushProviderType == null || pushProviderType.isBlank()) {
             pushProviderType = current.getPushProviderType();
         }
-        if (pushProviderId.equals(current.getPushProviderId()) && pushProviderType.equals(current.getPushProviderType())) {
+        if (pushProviderId.equals(current.getPushProviderId())
+                && pushProviderType.equals(current.getPushProviderType())) {
             return Response.ok(Map.of("status", "unchanged")).build();
         }
         PushCredentialData updated = new PushCredentialData(
-            current.getPublicKeyJwk(),
-            current.getAlgorithm(),
-            current.getCreatedAt(),
-            current.getDeviceType(),
-            pushProviderId,
-            pushProviderType,
-            current.getPseudonymousUserId(),
-            current.getDeviceId());
+                current.getPublicKeyJwk(),
+                current.getAlgorithm(),
+                current.getCreatedAt(),
+                current.getDeviceType(),
+                pushProviderId,
+                pushProviderType,
+                current.getPseudonymousUserId(),
+                current.getDeviceId());
         PushCredentialService.updateCredential(device.user(), device.credential(), updated);
-        LOG.infof("Updated push provider {type=%s} for device %s (user=%s)", pushProviderType, current.getDeviceId(), device.user().getId());
+        LOG.infof(
+                "Updated push provider {type=%s} for device %s (user=%s)",
+                pushProviderType, current.getDeviceId(), device.user().getId());
         return Response.ok(Map.of("status", "updated")).build();
     }
 
     @PUT
     @Path("device/rotate-key")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response rotateDeviceKey(@Context HttpHeaders headers,
-                                    @Context UriInfo uriInfo,
-                                    RotateDeviceKeyRequest request) {
+    public Response rotateDeviceKey(
+            @Context HttpHeaders headers, @Context UriInfo uriInfo, RotateDeviceKeyRequest request) {
         DeviceAssertion device = authenticateDevice(headers, uriInfo, "PUT");
         JsonNode jwkNode = Optional.ofNullable(request.publicKeyJwk())
-            .orElseThrow(() -> new BadRequestException("Request missing publicKeyJwk"));
+                .orElseThrow(() -> new BadRequestException("Request missing publicKeyJwk"));
         String algorithm = require(request.algorithm(), "algorithm");
         requireSupportedAlgorithm(algorithm, "rotate-key request");
         String normalizedAlgorithm = algorithm.toUpperCase();
@@ -361,16 +361,18 @@ public class PushMfaResource {
 
         PushCredentialData current = device.credentialData();
         PushCredentialData updated = new PushCredentialData(
-            jwkNode.toString(),
-            normalizedAlgorithm,
-            Instant.now().toEpochMilli(),
-            current.getDeviceType(),
-            current.getPushProviderId(),
-            current.getPushProviderType(),
-            current.getPseudonymousUserId(),
-            current.getDeviceId());
+                jwkNode.toString(),
+                normalizedAlgorithm,
+                Instant.now().toEpochMilli(),
+                current.getDeviceType(),
+                current.getPushProviderId(),
+                current.getPushProviderType(),
+                current.getPseudonymousUserId(),
+                current.getDeviceId());
         PushCredentialService.updateCredential(device.user(), device.credential(), updated);
-        LOG.infof("Rotated device key for %s (user=%s)", current.getDeviceId(), device.user().getId());
+        LOG.infof(
+                "Rotated device key for %s (user=%s)",
+                current.getDeviceId(), device.user().getId());
         return Response.ok(Map.of("status", "rotated")).build();
     }
 
@@ -445,15 +447,16 @@ public class PushMfaResource {
         try {
             Predicate<? super AccessToken> revocationCheck = new TokenManager.TokenRevocationCheck(session);
             TokenVerifier<AccessToken> verifier = TokenVerifier.create(tokenString, AccessToken.class)
-                .withDefaultChecks()
-                .realmUrl(Urls.realmIssuer(session.getContext().getUri().getBaseUri(), realm().getName()))
-                .checkActive(true)
-                .tokenType(List.of(TokenUtil.TOKEN_TYPE_BEARER, TokenUtil.TOKEN_TYPE_DPOP))
-                .withChecks(revocationCheck);
+                    .withDefaultChecks()
+                    .realmUrl(Urls.realmIssuer(session.getContext().getUri().getBaseUri(), realm().getName()))
+                    .checkActive(true)
+                    .tokenType(List.of(TokenUtil.TOKEN_TYPE_BEARER, TokenUtil.TOKEN_TYPE_DPOP))
+                    .withChecks(revocationCheck);
 
             String kid = verifier.getHeader().getKeyId();
             String alg = verifier.getHeader().getAlgorithm().name();
-            SignatureVerifierContext svc = session.getProvider(SignatureProvider.class, alg).verifier(kid);
+            SignatureVerifierContext svc =
+                    session.getProvider(SignatureProvider.class, alg).verifier(kid);
             verifier.verifierContext(svc);
             return verifier.verify().getToken();
         } catch (VerificationException ex) {
@@ -472,9 +475,7 @@ public class PushMfaResource {
         return value.trim();
     }
 
-    private DeviceAssertion authenticateDevice(HttpHeaders headers,
-                                               UriInfo uriInfo,
-                                               String httpMethod) {
+    private DeviceAssertion authenticateDevice(HttpHeaders headers, UriInfo uriInfo, String httpMethod) {
         String accessTokenString = requireAccessToken(headers);
         AccessToken accessToken = authenticateAccessToken(accessTokenString);
         String proof = requireDpopProof(headers);
@@ -532,18 +533,21 @@ public class PushMfaResource {
         }
 
         CredentialModel credential = credentials.stream()
-            .filter(model -> {
-                PushCredentialData credentialData = PushCredentialService.readCredentialData(model);
-                return credentialData != null && tokenDeviceId.equals(credentialData.getDeviceId());
-            })
-            .findFirst()
-            .orElseThrow(() -> new ForbiddenException("Device not registered for user"));
+                .filter(model -> {
+                    PushCredentialData credentialData = PushCredentialService.readCredentialData(model);
+                    return credentialData != null && tokenDeviceId.equals(credentialData.getDeviceId());
+                })
+                .findFirst()
+                .orElseThrow(() -> new ForbiddenException("Device not registered for user"));
 
         PushCredentialData credentialData = PushCredentialService.readCredentialData(credential);
-        if (credentialData == null || credentialData.getPublicKeyJwk() == null || credentialData.getPublicKeyJwk().isBlank()) {
+        if (credentialData == null
+                || credentialData.getPublicKeyJwk() == null
+                || credentialData.getPublicKeyJwk().isBlank()) {
             throw new BadRequestException("Stored credential missing JWK");
         }
-        if (credentialData.getAlgorithm() != null && !algorithm.toString().equalsIgnoreCase(credentialData.getAlgorithm())) {
+        if (credentialData.getAlgorithm() != null
+                && !algorithm.toString().equalsIgnoreCase(credentialData.getAlgorithm())) {
             throw new BadRequestException("DPoP algorithm mismatch");
         }
 
@@ -555,7 +559,9 @@ public class PushMfaResource {
         }
 
         AccessToken.Confirmation confirmation = accessToken.getConfirmation();
-        if (confirmation == null || confirmation.getKeyThumbprint() == null || confirmation.getKeyThumbprint().isBlank()) {
+        if (confirmation == null
+                || confirmation.getKeyThumbprint() == null
+                || confirmation.getKeyThumbprint().isBlank()) {
             throw new ForbiddenException("Access token missing DPoP binding");
         }
         String expectedJkt = computeJwkThumbprint(credentialData.getPublicKeyJwk());
@@ -626,8 +632,7 @@ public class PushMfaResource {
         if (keyWrapper == null) {
             throw new BadRequestException("JWK is required");
         }
-        if (keyWrapper.getAlgorithm() != null
-            && !normalizedAlg.equalsIgnoreCase(keyWrapper.getAlgorithm())) {
+        if (keyWrapper.getAlgorithm() != null && !normalizedAlg.equalsIgnoreCase(keyWrapper.getAlgorithm())) {
             throw new BadRequestException("JWK algorithm mismatch");
         }
         if (KeyType.RSA.equals(keyWrapper.getType())) {
@@ -690,7 +695,6 @@ public class PushMfaResource {
         }
     }
 
-
     private boolean ensureAuthenticationSessionActive(PushChallenge challenge) {
         String rootSessionId = challenge.getRootSessionId();
         if (rootSessionId == null || rootSessionId.isBlank()) {
@@ -705,10 +709,7 @@ public class PushMfaResource {
         return false;
     }
 
-    private void emitLoginChallengeEvents(String challengeId,
-                                          String secret,
-                                          SseEventSink sink,
-                                          Sse sse) {
+    private void emitLoginChallengeEvents(String challengeId, String secret, SseEventSink sink, Sse sse) {
         try (SseEventSink eventSink = sink) {
             LOG.infof("Starting login SSE stream for challenge %s", challengeId);
             if (secret == null || secret.isBlank()) {
@@ -727,7 +728,8 @@ public class PushMfaResource {
                 }
                 PushChallenge challenge = challengeOpt.get();
                 if (challenge.getType() != PushChallenge.Type.AUTHENTICATION) {
-                    LOG.infof("Login SSE rejected for %s because challenge type is %s", challengeId, challenge.getType());
+                    LOG.infof(
+                            "Login SSE rejected for %s because challenge type is %s", challengeId, challenge.getType());
                     sendLoginStatusEvent(eventSink, sse, "BAD_TYPE", null);
                     break;
                 }
@@ -763,10 +765,7 @@ public class PushMfaResource {
         }
     }
 
-    private void emitEnrollmentEvents(String challengeId,
-                                      String secret,
-                                      SseEventSink sink,
-                                      Sse sse) {
+    private void emitEnrollmentEvents(String challengeId, String secret, SseEventSink sink, Sse sse) {
         try (SseEventSink eventSink = sink) {
             LOG.infof("Starting enrollment SSE stream for challenge %s", challengeId);
             if (secret == null || secret.isBlank()) {
@@ -816,10 +815,7 @@ public class PushMfaResource {
         }
     }
 
-    private void sendLoginStatusEvent(SseEventSink sink,
-                                      Sse sse,
-                                      String status,
-                                      PushChallenge challenge) {
+    private void sendLoginStatusEvent(SseEventSink sink, Sse sse, String status, PushChallenge challenge) {
         if (sink.isClosed()) {
             return;
         }
@@ -838,18 +834,19 @@ public class PushMfaResource {
             }
             String data = JsonSerialization.writeValueAsString(payload);
             sink.send(sse.newEventBuilder()
-                .name("status")
-                .data(String.class, data)
-                .build());
+                    .name("status")
+                    .data(String.class, data)
+                    .build());
         } catch (Exception ex) {
-            LOG.infof(ex, "Unable to send login SSE status %s for %s", status, challenge != null ? challenge.getId() : "n/a");
+            LOG.infof(
+                    ex,
+                    "Unable to send login SSE status %s for %s",
+                    status,
+                    challenge != null ? challenge.getId() : "n/a");
         }
     }
 
-    private void sendEnrollmentStatusEvent(SseEventSink sink,
-                                           Sse sse,
-                                           String status,
-                                           PushChallenge challenge) {
+    private void sendEnrollmentStatusEvent(SseEventSink sink, Sse sse, String status, PushChallenge challenge) {
         if (sink.isClosed()) {
             return;
         }
@@ -867,36 +864,34 @@ public class PushMfaResource {
             }
             String data = JsonSerialization.writeValueAsString(payload);
             sink.send(sse.newEventBuilder()
-                .name("status")
-                .data(String.class, data)
-                .build());
+                    .name("status")
+                    .data(String.class, data)
+                    .build());
         } catch (Exception ex) {
-            LOG.infof(ex, "Unable to send enrollment SSE status %s for %s", status, challenge != null ? challenge.getId() : "n/a");
+            LOG.infof(
+                    ex,
+                    "Unable to send enrollment SSE status %s for %s",
+                    status,
+                    challenge != null ? challenge.getId() : "n/a");
         }
     }
 
-    record EnrollmentCompleteRequest(@JsonProperty("token") String token) {
-    }
+    record EnrollmentCompleteRequest(@JsonProperty("token") String token) {}
 
-    record LoginChallenge(@JsonProperty("userId") String userId,
-                          @JsonProperty("cid") String cid,
-                          @JsonProperty("expiresAt") long expiresAt,
-                          @JsonProperty("clientId") String clientId) {
-    }
+    record LoginChallenge(
+            @JsonProperty("userId") String userId,
+            @JsonProperty("cid") String cid,
+            @JsonProperty("expiresAt") long expiresAt,
+            @JsonProperty("clientId") String clientId) {}
 
-    record ChallengeRespondRequest(@JsonProperty("token") String token) {
-    }
+    record ChallengeRespondRequest(@JsonProperty("token") String token) {}
 
-    record UpdatePushProviderRequest(@JsonProperty("pushProviderId") String pushProviderId,
-                                     @JsonProperty("pushProviderType") String pushProviderType) {
-    }
+    record UpdatePushProviderRequest(
+            @JsonProperty("pushProviderId") String pushProviderId,
+            @JsonProperty("pushProviderType") String pushProviderType) {}
 
-    record RotateDeviceKeyRequest(@JsonProperty("publicKeyJwk") JsonNode publicKeyJwk,
-                                  @JsonProperty("algorithm") String algorithm) {
-    }
+    record RotateDeviceKeyRequest(
+            @JsonProperty("publicKeyJwk") JsonNode publicKeyJwk, @JsonProperty("algorithm") String algorithm) {}
 
-    record DeviceAssertion(UserModel user,
-                           CredentialModel credential,
-                           PushCredentialData credentialData) {
-    }
+    record DeviceAssertion(UserModel user, CredentialModel credential, PushCredentialData credentialData) {}
 }

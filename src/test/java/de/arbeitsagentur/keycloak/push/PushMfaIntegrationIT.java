@@ -1,5 +1,7 @@
 package de.arbeitsagentur.keycloak.push;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.arbeitsagentur.keycloak.push.support.AdminClient;
@@ -9,6 +11,12 @@ import de.arbeitsagentur.keycloak.push.support.DeviceKeyType;
 import de.arbeitsagentur.keycloak.push.support.DeviceSigningKey;
 import de.arbeitsagentur.keycloak.push.support.DeviceState;
 import de.arbeitsagentur.keycloak.push.support.HtmlPage;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Duration;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -18,34 +26,29 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class PushMfaIntegrationIT {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path EXTENSION_JAR = locateProviderJar();
-    private static final Path REALM_FILE = Paths.get("config", "push-mfa-realm.json").toAbsolutePath();
+    private static final Path REALM_FILE =
+            Paths.get("config", "push-mfa-realm.json").toAbsolutePath();
     private static final String TEST_USERNAME = "test";
 
     @Container
     private static final GenericContainer<?> KEYCLOAK = new GenericContainer<>("quay.io/keycloak/keycloak:26.4.5")
-        .withExposedPorts(8080)
-        .withCopyFileToContainer(MountableFile.forHostPath(EXTENSION_JAR), "/opt/keycloak/providers/keycloak-push-mfa.jar")
-        .withCopyFileToContainer(MountableFile.forHostPath(REALM_FILE), "/opt/keycloak/data/import/push-mfa-realm.json")
-        .withEnv("KEYCLOAK_ADMIN", "admin")
-        .withEnv("KEYCLOAK_ADMIN_PASSWORD", "admin")
-        .withCommand("start-dev --hostname=localhost --hostname-strict=false --http-enabled=true --import-realm --features=dpop")
-        .waitingFor(Wait.forHttp("/realms/master").forStatusCode(200))
-        .withStartupTimeout(Duration.ofMinutes(3));
+            .withExposedPorts(8080)
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(EXTENSION_JAR), "/opt/keycloak/providers/keycloak-push-mfa.jar")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath(REALM_FILE), "/opt/keycloak/data/import/push-mfa-realm.json")
+            .withEnv("KEYCLOAK_ADMIN", "admin")
+            .withEnv("KEYCLOAK_ADMIN_PASSWORD", "admin")
+            .withCommand(
+                    "start-dev --hostname=localhost --hostname-strict=false --http-enabled=true --import-realm --features=dpop")
+            .waitingFor(Wait.forHttp("/realms/master").forStatusCode(200))
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     private URI baseUri;
     private AdminClient adminClient;
@@ -86,8 +89,10 @@ public class PushMfaIntegrationIT {
             String status = deviceClient.rotateDeviceKey(rotatedKey);
             assertEquals("rotated", status);
 
-            JsonNode credentialData = adminClient.fetchPushCredential(deviceClient.state().userId());
-            JsonNode storedKey = MAPPER.readTree(credentialData.path("publicKeyJwk").asText());
+            JsonNode credentialData =
+                    adminClient.fetchPushCredential(deviceClient.state().userId());
+            JsonNode storedKey =
+                    MAPPER.readTree(credentialData.path("publicKeyJwk").asText());
             assertEquals(MAPPER.readTree(rotatedKey.publicJwk().toJSONString()), storedKey);
 
             completeLoginFlow(deviceClient);
@@ -106,9 +111,11 @@ public class PushMfaIntegrationIT {
             String status = deviceClient.updatePushProvider(newProviderId, newProviderType);
             assertEquals("updated", status);
 
-            JsonNode credentialData = adminClient.fetchPushCredential(deviceClient.state().userId());
+            JsonNode credentialData =
+                    adminClient.fetchPushCredential(deviceClient.state().userId());
             assertEquals(newProviderId, credentialData.path("pushProviderId").asText());
-            assertEquals(newProviderType, credentialData.path("pushProviderType").asText());
+            assertEquals(
+                    newProviderType, credentialData.path("pushProviderType").asText());
 
             String secondStatus = deviceClient.updatePushProvider(newProviderId, newProviderType);
             assertEquals("unchanged", secondStatus);
@@ -151,10 +158,11 @@ public class PushMfaIntegrationIT {
             throw new IllegalStateException("target directory not found. Run mvn package before integration tests.");
         }
         try (var files = Files.list(targetDir)) {
-            return files
-                .filter(path -> path.getFileName().toString().startsWith("keycloak-push-mfa") && path.getFileName().toString().endsWith(".jar"))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Provider JAR not found. Run mvn package before integration tests."));
+            return files.filter(path -> path.getFileName().toString().startsWith("keycloak-push-mfa")
+                            && path.getFileName().toString().endsWith(".jar"))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Provider JAR not found. Run mvn package before integration tests."));
         } catch (Exception ex) {
             throw new IllegalStateException("Unable to inspect target directory", ex);
         }

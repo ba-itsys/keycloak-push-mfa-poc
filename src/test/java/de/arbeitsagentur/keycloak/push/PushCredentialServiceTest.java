@@ -1,24 +1,23 @@
 package de.arbeitsagentur.keycloak.push;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.Mockito.times;
+
 import de.arbeitsagentur.keycloak.push.credential.PushCredentialData;
 import de.arbeitsagentur.keycloak.push.credential.PushCredentialService;
 import de.arbeitsagentur.keycloak.push.credential.PushCredentialUtils;
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.keycloak.credential.CredentialModel;
 import org.keycloak.models.SubjectCredentialManager;
 import org.keycloak.models.UserModel;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.mockito.Mockito.times;
 
 class PushCredentialServiceTest {
 
@@ -33,7 +32,7 @@ class PushCredentialServiceTest {
     void getActiveCredentialsReturnsStoredCredentials() {
         CredentialModel model = new CredentialModel();
         Mockito.when(manager.getStoredCredentialsByTypeStream(PushMfaConstants.CREDENTIAL_TYPE))
-            .thenReturn(Stream.of(model));
+                .thenReturn(Stream.of(model));
         List<CredentialModel> result = PushCredentialService.getActiveCredentials(user);
         assertEquals(1, result.size());
         assertSame(model, result.get(0));
@@ -45,14 +44,14 @@ class PushCredentialServiceTest {
         CredentialModel persisted = new CredentialModel();
         Mockito.when(manager.createStoredCredential(Mockito.any())).thenReturn(persisted);
         PushCredentialData data = new PushCredentialData(
-            "{\"kty\":\"RSA\"}",
-            "RS256",
-            Instant.now().toEpochMilli(),
-            "ios",
-            "push-token",
-            "log",
-            "pseudo",
-            "device-1");
+                "{\"kty\":\"RSA\"}",
+                "RS256",
+                Instant.now().toEpochMilli(),
+                "ios",
+                "push-token",
+                "log",
+                "pseudo",
+                "device-1");
         CredentialModel result = PushCredentialService.createCredential(user, "Demo Device", data);
         assertSame(persisted, result);
         Mockito.verify(manager).createStoredCredential(captor.capture());
@@ -66,15 +65,8 @@ class PushCredentialServiceTest {
 
     @Test
     void readCredentialDataParsesJson() {
-        PushCredentialData data = new PushCredentialData(
-            "{\"kty\":\"RSA\"}",
-            "RS256",
-            1L,
-            "ios",
-            "token-1",
-            "log",
-            "pseudo",
-            "device");
+        PushCredentialData data =
+                new PushCredentialData("{\"kty\":\"RSA\"}", "RS256", 1L, "ios", "token-1", "log", "pseudo", "device");
         CredentialModel model = new CredentialModel();
         model.setCredentialData(PushCredentialUtils.toJson(data));
         PushCredentialData read = PushCredentialService.readCredentialData(model);
@@ -84,15 +76,8 @@ class PushCredentialServiceTest {
 
     @Test
     void updateCredentialRewritesStoredValue() {
-        PushCredentialData data = new PushCredentialData(
-            "{\"kty\":\"RSA\"}",
-            "RS256",
-            1L,
-            "ios",
-            "token-2",
-            "log",
-            "pseudo",
-            "device");
+        PushCredentialData data =
+                new PushCredentialData("{\"kty\":\"RSA\"}", "RS256", 1L, "ios", "token-2", "log", "pseudo", "device");
         CredentialModel model = new CredentialModel();
         PushCredentialService.updateCredential(user, model, data);
         Mockito.verify(manager).updateStoredCredential(model);

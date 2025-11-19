@@ -7,6 +7,8 @@ import de.arbeitsagentur.keycloak.push.credential.PushCredentialService;
 import de.arbeitsagentur.keycloak.push.token.PushEnrollmentTokenBuilder;
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
 import jakarta.ws.rs.core.MultivaluedMap;
+import java.security.SecureRandom;
+import java.util.List;
 import org.keycloak.authentication.InitiatedActionSupport;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionFactory;
@@ -17,9 +19,6 @@ import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.sessions.AuthenticationSessionModel;
-
-import java.security.SecureRandom;
-import java.util.List;
 
 public class PushMfaRegisterRequiredAction implements RequiredActionProvider, RequiredActionFactory {
 
@@ -49,14 +48,15 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
     public void requiredActionChallenge(RequiredActionContext context) {
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
         PushChallengeStore store = new PushChallengeStore(context.getSession());
-        PushChallenge challenge = ensureWatchableChallenge(context, authSession, store, fetchOrCreateChallenge(context, authSession, store, false));
+        PushChallenge challenge = ensureWatchableChallenge(
+                context, authSession, store, fetchOrCreateChallenge(context, authSession, store, false));
 
         String enrollmentToken = PushEnrollmentTokenBuilder.build(
-            context.getSession(),
-            context.getRealm(),
-            context.getUser(),
-            challenge,
-            context.getUriInfo().getBaseUri());
+                context.getSession(),
+                context.getRealm(),
+                context.getUser(),
+                challenge,
+                context.getUriInfo().getBaseUri());
 
         LoginFormsProvider form = context.form();
         form.setAttribute("pushUsername", context.getUser().getUsername());
@@ -86,7 +86,8 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
             return;
         }
 
-        boolean hasCredential = !PushCredentialService.getActiveCredentials(context.getUser()).isEmpty();
+        boolean hasCredential =
+                !PushCredentialService.getActiveCredentials(context.getUser()).isEmpty();
 
         if (!hasCredential) {
             if (checkOnly) {
@@ -94,13 +95,14 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
                 return;
             }
             cleanupChallenge(authSession, store);
-            PushChallenge challenge = ensureWatchableChallenge(context, authSession, store, fetchOrCreateChallenge(context, authSession, store, false));
+            PushChallenge challenge = ensureWatchableChallenge(
+                    context, authSession, store, fetchOrCreateChallenge(context, authSession, store, false));
             String enrollmentToken = PushEnrollmentTokenBuilder.build(
-                context.getSession(),
-                context.getRealm(),
-                context.getUser(),
-                challenge,
-                context.getUriInfo().getBaseUri());
+                    context.getSession(),
+                    context.getRealm(),
+                    context.getUser(),
+                    challenge,
+                    context.getUriInfo().getBaseUri());
 
             LoginFormsProvider form = context.form().setError("push-mfa-registration-missing");
             form.setAttribute("pushUsername", context.getUser().getUsername());
@@ -145,17 +147,18 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
         return List.of();
     }
 
-    private PushChallenge fetchOrCreateChallenge(RequiredActionContext context,
-                                                 AuthenticationSessionModel authSession,
-                                                 PushChallengeStore store,
-                                                 boolean forceNew) {
+    private PushChallenge fetchOrCreateChallenge(
+            RequiredActionContext context,
+            AuthenticationSessionModel authSession,
+            PushChallengeStore store,
+            boolean forceNew) {
         PushChallenge challenge = null;
         if (!forceNew) {
             String existingId = authSession.getAuthNote(PushMfaConstants.ENROLL_CHALLENGE_NOTE);
             if (existingId != null) {
                 challenge = store.get(existingId)
-                    .filter(c -> c.getStatus() == PushChallengeStatus.PENDING)
-                    .orElse(null);
+                        .filter(c -> c.getStatus() == PushChallengeStatus.PENDING)
+                        .orElse(null);
                 if (challenge == null) {
                     store.remove(existingId);
                     authSession.removeAuthNote(PushMfaConstants.ENROLL_CHALLENGE_NOTE);
@@ -168,15 +171,15 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
             RANDOM.nextBytes(nonceBytes);
             String watchSecret = KeycloakModelUtils.generateId();
             challenge = store.create(
-                context.getRealm().getId(),
-                context.getUser().getId(),
-                nonceBytes,
-                PushChallenge.Type.ENROLLMENT,
-                PushMfaConstants.CHALLENGE_TTL,
-                null,
-                null,
-                watchSecret,
-                null);
+                    context.getRealm().getId(),
+                    context.getUser().getId(),
+                    nonceBytes,
+                    PushChallenge.Type.ENROLLMENT,
+                    PushMfaConstants.CHALLENGE_TTL,
+                    null,
+                    null,
+                    watchSecret,
+                    null);
             authSession.setAuthNote(PushMfaConstants.ENROLL_CHALLENGE_NOTE, challenge.getId());
         }
 
@@ -192,12 +195,15 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
         authSession.removeAuthNote(PushMfaConstants.ENROLL_SSE_TOKEN_NOTE);
     }
 
-    private PushChallenge ensureWatchableChallenge(RequiredActionContext context,
-                                                   AuthenticationSessionModel authSession,
-                                                   PushChallengeStore store,
-                                                   PushChallenge challenge) {
+    private PushChallenge ensureWatchableChallenge(
+            RequiredActionContext context,
+            AuthenticationSessionModel authSession,
+            PushChallengeStore store,
+            PushChallenge challenge) {
         PushChallenge ensured = challenge;
-        if (ensured == null || ensured.getWatchSecret() == null || ensured.getWatchSecret().isBlank()) {
+        if (ensured == null
+                || ensured.getWatchSecret() == null
+                || ensured.getWatchSecret().isBlank()) {
             cleanupChallenge(authSession, store);
             ensured = fetchOrCreateChallenge(context, authSession, store, true);
         }
@@ -212,16 +218,17 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
         if (watchSecret == null || watchSecret.isBlank()) {
             return null;
         }
-        return context.getUriInfo().getBaseUriBuilder()
-            .path("realms")
-            .path(context.getRealm().getName())
-            .path("push-mfa")
-            .path("enroll")
-            .path("challenges")
-            .path(challenge.getId())
-            .path("events")
-            .queryParam("secret", watchSecret)
-            .build()
-            .toString();
+        return context.getUriInfo()
+                .getBaseUriBuilder()
+                .path("realms")
+                .path(context.getRealm().getName())
+                .path("push-mfa")
+                .path("enroll")
+                .path("challenges")
+                .path(challenge.getId())
+                .path("events")
+                .queryParam("secret", watchSecret)
+                .build()
+                .toString();
     }
 }

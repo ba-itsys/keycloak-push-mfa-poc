@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.utils.KeycloakModelUtils;
@@ -26,15 +25,16 @@ public class PushChallengeStore {
         this.singleUse = Objects.requireNonNull(session.singleUseObjects());
     }
 
-    public PushChallenge create(String realmId,
-                                String userId,
-                                byte[] nonceBytes,
-                                PushChallenge.Type type,
-                                Duration ttl,
-                                String credentialId,
-                                String clientId,
-                                String watchSecret,
-                                String rootSessionId) {
+    public PushChallenge create(
+            String realmId,
+            String userId,
+            byte[] nonceBytes,
+            PushChallenge.Type type,
+            Duration ttl,
+            String credentialId,
+            String clientId,
+            String watchSecret,
+            String rootSessionId) {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(ttl);
         String id = KeycloakModelUtils.generateId();
@@ -68,7 +68,20 @@ public class PushChallengeStore {
             replaceAuthenticationIndex(realmId, userId, id, expiresAt, ttlSeconds);
         }
 
-        return new PushChallenge(id, realmId, userId, nonceBytes, credentialId, clientId, watchSecret, rootSessionId, expiresAt, type, PushChallengeStatus.PENDING, now, null);
+        return new PushChallenge(
+                id,
+                realmId,
+                userId,
+                nonceBytes,
+                credentialId,
+                clientId,
+                watchSecret,
+                rootSessionId,
+                expiresAt,
+                type,
+                PushChallengeStatus.PENDING,
+                now,
+                null);
     }
 
     public Optional<PushChallenge> get(String challengeId) {
@@ -83,7 +96,8 @@ public class PushChallengeStore {
             return Optional.empty();
         }
 
-        if (challenge.getStatus() == PushChallengeStatus.PENDING && Instant.now().isAfter(challenge.getExpiresAt())) {
+        if (challenge.getStatus() == PushChallengeStatus.PENDING
+                && Instant.now().isAfter(challenge.getExpiresAt())) {
             challenge = markExpired(challengeId, data);
         }
 
@@ -159,11 +173,8 @@ public class PushChallengeStore {
         return expired;
     }
 
-    private void replaceAuthenticationIndex(String realmId,
-                                             String userId,
-                                             String challengeId,
-                                             Instant expiresAt,
-                                             long ttlSeconds) {
+    private void replaceAuthenticationIndex(
+            String realmId, String userId, String challengeId, Instant expiresAt, long ttlSeconds) {
         Map<String, String> previous = singleUse.remove(userIndexKey(realmId, userId));
         if (previous != null) {
             String previousId = previous.get("challengeId");
@@ -199,7 +210,13 @@ public class PushChallengeStore {
         String createdAt = data.get("createdAt");
         String resolvedAt = data.get("resolvedAt");
 
-        if (realmId == null || userId == null || nonce == null || expiresAt == null || type == null || status == null || createdAt == null) {
+        if (realmId == null
+                || userId == null
+                || nonce == null
+                || expiresAt == null
+                || type == null
+                || status == null
+                || createdAt == null) {
             return null;
         }
 
@@ -208,19 +225,19 @@ public class PushChallengeStore {
         Instant resolved = resolvedAt == null ? null : Instant.parse(resolvedAt);
 
         return new PushChallenge(
-            challengeId,
-            realmId,
-            userId,
-            decodeNonce(nonce),
-            data.get("credentialId"),
-            data.get("clientId"),
-            data.get("watchSecret"),
-            data.get("rootSessionId"),
-            expires,
-            PushChallenge.Type.valueOf(type),
-            PushChallengeStatus.valueOf(status),
-            created,
-            resolved);
+                challengeId,
+                realmId,
+                userId,
+                decodeNonce(nonce),
+                data.get("credentialId"),
+                data.get("clientId"),
+                data.get("watchSecret"),
+                data.get("rootSessionId"),
+                expires,
+                PushChallenge.Type.valueOf(type),
+                PushChallengeStatus.valueOf(status),
+                created,
+                resolved);
     }
 
     private boolean isAuthentication(Map<String, String> data) {

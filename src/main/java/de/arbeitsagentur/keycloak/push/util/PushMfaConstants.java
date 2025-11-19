@@ -4,8 +4,7 @@ import java.time.Duration;
 
 public final class PushMfaConstants {
 
-    private PushMfaConstants() {
-    }
+    private PushMfaConstants() {}
 
     public static final String CREDENTIAL_TYPE = "push-mfa";
     public static final String PROVIDER_ID = "push-mfa-authenticator";

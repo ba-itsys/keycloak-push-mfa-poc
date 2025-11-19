@@ -10,12 +10,12 @@ import org.keycloak.provider.Provider;
  */
 public interface PushNotificationSender extends Provider {
 
-    void send(KeycloakSession session,
-              RealmModel realm,
-              UserModel user,
-              String confirmToken,
-              String pseudonymousUserId,
-              String challengeId,
-              String clientId);
+    void send(
+            KeycloakSession session,
+            RealmModel realm,
+            UserModel user,
+            String confirmToken,
+            String pseudonymousUserId,
+            String challengeId,
+            String clientId);
 }
-

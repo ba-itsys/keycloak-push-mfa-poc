@@ -1,8 +1,10 @@
 package de.arbeitsagentur.keycloak.push.support;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -10,17 +12,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-
 public final class AdminClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final URI baseUri;
-    private final HttpClient http = HttpClient.newBuilder()
-        .version(HttpClient.Version.HTTP_1_1)
-        .build();
+    private final HttpClient http =
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
     private String accessToken;
 
     public AdminClient(URI baseUri) {
@@ -59,9 +57,9 @@ public final class AdminClient {
             }
             URI deleteUri = baseUri.resolve("/admin/realms/push-mfa/users/" + userId + "/credentials/" + credentialId);
             HttpRequest deleteRequest = HttpRequest.newBuilder(deleteUri)
-                .header("Authorization", "Bearer " + accessToken)
-                .DELETE()
-                .build();
+                    .header("Authorization", "Bearer " + accessToken)
+                    .DELETE()
+                    .build();
             HttpResponse<String> deleteResponse = http.send(deleteRequest, HttpResponse.BodyHandlers.ofString());
             assertEquals(204, deleteResponse.statusCode(), () -> "Credential delete failed: " + deleteResponse.body());
         }
@@ -70,9 +68,9 @@ public final class AdminClient {
     private void logoutUser(String userId) throws Exception {
         URI logoutUri = baseUri.resolve("/admin/realms/push-mfa/users/" + userId + "/logout");
         HttpRequest request = HttpRequest.newBuilder(logoutUri)
-            .header("Authorization", "Bearer " + accessToken)
-            .POST(HttpRequest.BodyPublishers.noBody())
-            .build();
+                .header("Authorization", "Bearer " + accessToken)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(204, response.statusCode(), () -> "Logout failed: " + response.body());
     }
@@ -81,10 +79,10 @@ public final class AdminClient {
         ensureAccessToken();
         URI credentialsUri = baseUri.resolve("/admin/realms/push-mfa/users/" + userId + "/credentials");
         HttpRequest request = HttpRequest.newBuilder(credentialsUri)
-            .header("Authorization", "Bearer " + accessToken)
-            .header("Accept", "application/json")
-            .GET()
-            .build();
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), () -> "Credential fetch failed: " + response.body());
         JsonNode items = MAPPER.readTree(response.body());
@@ -98,10 +96,10 @@ public final class AdminClient {
         ensureAccessToken();
         URI usersUri = baseUri.resolve("/admin/realms/push-mfa/users?username=" + urlEncode(username));
         HttpRequest request = HttpRequest.newBuilder(usersUri)
-            .header("Authorization", "Bearer " + accessToken)
-            .header("Accept", "application/json")
-            .GET()
-            .build();
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), () -> "User lookup failed: " + response.body());
         JsonNode users = MAPPER.readTree(response.body());
@@ -118,9 +116,9 @@ public final class AdminClient {
         URI tokenUri = baseUri.resolve("/realms/master/protocol/openid-connect/token");
         String body = "grant_type=password&client_id=admin-cli&username=admin&password=admin";
         HttpRequest request = HttpRequest.newBuilder(tokenUri)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build();
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), () -> "Admin token request failed: " + response.body());
         JsonNode json = MAPPER.readTree(response.body());

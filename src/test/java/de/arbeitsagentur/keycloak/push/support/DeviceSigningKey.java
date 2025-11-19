@@ -11,7 +11,6 @@ import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
-
 import java.util.UUID;
 
 public final class DeviceSigningKey {
@@ -35,19 +34,19 @@ public final class DeviceSigningKey {
 
     public static DeviceSigningKey generateRsa() throws Exception {
         RSAKey rsaKey = new RSAKeyGenerator(2048)
-            .keyID("device-key-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.RS256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("device-key-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.RS256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         return new DeviceSigningKey(rsaKey, JWSAlgorithm.RS256, new RSASSASigner(rsaKey));
     }
 
     public static DeviceSigningKey generateEcdsa() throws Exception {
         ECKey ecKey = new ECKeyGenerator(Curve.P_256)
-            .keyID("device-key-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.ES256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("device-key-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.ES256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         return new DeviceSigningKey(ecKey, JWSAlgorithm.ES256, new ECDSASigner(ecKey));
     }
 

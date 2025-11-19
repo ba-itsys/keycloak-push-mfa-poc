@@ -16,22 +16,23 @@ public class PushCredentialData {
     private final String deviceId;
 
     @JsonCreator
-    public PushCredentialData(@JsonProperty("publicKeyJwk") String publicKeyJwk,
-                              @JsonProperty("algorithm") String algorithm,
-                              @JsonProperty("createdAt") long createdAt,
-                              @JsonProperty("deviceType") String deviceType,
-                              @JsonProperty("pushProviderId") String pushProviderId,
-                              @JsonProperty("pushProviderType") String pushProviderType,
-                              @JsonProperty("pseudonymousUserId") String pseudonymousUserId,
-                              @JsonProperty("deviceId") String deviceId) {
+    public PushCredentialData(
+            @JsonProperty("publicKeyJwk") String publicKeyJwk,
+            @JsonProperty("algorithm") String algorithm,
+            @JsonProperty("createdAt") long createdAt,
+            @JsonProperty("deviceType") String deviceType,
+            @JsonProperty("pushProviderId") String pushProviderId,
+            @JsonProperty("pushProviderType") String pushProviderType,
+            @JsonProperty("pseudonymousUserId") String pseudonymousUserId,
+            @JsonProperty("deviceId") String deviceId) {
         this.publicKeyJwk = publicKeyJwk;
         this.algorithm = algorithm;
         this.createdAt = createdAt;
         this.deviceType = deviceType;
         this.pushProviderId = pushProviderId;
         this.pushProviderType = (pushProviderType == null || pushProviderType.isBlank())
-            ? PushMfaConstants.DEFAULT_PUSH_PROVIDER_TYPE
-            : pushProviderType;
+                ? PushMfaConstants.DEFAULT_PUSH_PROVIDER_TYPE
+                : pushProviderType;
         this.pseudonymousUserId = pseudonymousUserId;
         this.deviceId = deviceId;
     }

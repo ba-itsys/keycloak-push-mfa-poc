@@ -1,16 +1,14 @@
 package de.arbeitsagentur.keycloak.push.util;
 
+import java.util.Base64;
 import org.jboss.logging.Logger;
 import org.keycloak.util.JsonSerialization;
-
-import java.util.Base64;
 
 public final class TokenLogHelper {
 
     private static final Logger LOG = Logger.getLogger(TokenLogHelper.class);
 
-    private TokenLogHelper() {
-    }
+    private TokenLogHelper() {}
 
     public static void logJwt(String label, String token) {
         if (!LOG.isDebugEnabled()) {
@@ -30,10 +28,7 @@ public final class TokenLogHelper {
         try {
             String headerJson = decodePart(parts[0]);
             String payloadJson = decodePart(parts[1]);
-            LOG.debugf("%s token:%n  header:%n%s%n  payload:%n%s",
-                label,
-                indent(headerJson),
-                indent(payloadJson));
+            LOG.debugf("%s token:%n  header:%n%s%n  payload:%n%s", label, indent(headerJson), indent(payloadJson));
         } catch (Exception ex) {
             LOG.debugf("%s token (decode error): %s", label, token);
         }

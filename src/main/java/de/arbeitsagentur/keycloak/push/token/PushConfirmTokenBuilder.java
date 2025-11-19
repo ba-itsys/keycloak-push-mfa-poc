@@ -2,6 +2,11 @@ package de.arbeitsagentur.keycloak.push.token;
 
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
 import jakarta.ws.rs.core.UriBuilder;
+import java.net.URI;
+import java.security.PrivateKey;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jws.Algorithm;
@@ -10,33 +15,25 @@ import org.keycloak.jose.jws.JWSBuilder.EncodingBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 
-import java.net.URI;
-import java.security.PrivateKey;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-
 public final class PushConfirmTokenBuilder {
 
-    private PushConfirmTokenBuilder() {
-    }
+    private PushConfirmTokenBuilder() {}
 
-    public static String build(KeycloakSession session,
-                               RealmModel realm,
-                               String pseudonymousUserId,
-                               String challengeId,
-                               Instant challengeExpiresAt,
-                               URI baseUri,
-                               String clientId) {
+    public static String build(
+            KeycloakSession session,
+            RealmModel realm,
+            String pseudonymousUserId,
+            String challengeId,
+            Instant challengeExpiresAt,
+            URI baseUri,
+            String clientId) {
         KeyWrapper key = session.keys().getActiveKey(realm, KeyUse.SIG, Algorithm.RS256.toString());
         if (key == null || key.getPrivateKey() == null) {
             throw new IllegalStateException("No active signing key for realm");
         }
 
-        URI issuer = UriBuilder.fromUri(baseUri)
-            .path("realms")
-            .path(realm.getName())
-            .build();
+        URI issuer =
+                UriBuilder.fromUri(baseUri).path("realms").path(realm.getName()).build();
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("iss", issuer.toString());
@@ -62,10 +59,7 @@ public final class PushConfirmTokenBuilder {
         }
 
         PrivateKey privateKey = (PrivateKey) key.getPrivateKey();
-        EncodingBuilder builder = new JWSBuilder()
-            .kid(key.getKid())
-            .type("JWT")
-            .jsonContent(payload);
+        EncodingBuilder builder = new JWSBuilder().kid(key.getKid()).type("JWT").jsonContent(payload);
 
         return builder.sign(algorithm, privateKey);
     }

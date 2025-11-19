@@ -1,5 +1,8 @@
 package de.arbeitsagentur.keycloak.push;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import de.arbeitsagentur.keycloak.push.challenge.PushChallenge;
@@ -8,6 +11,12 @@ import de.arbeitsagentur.keycloak.push.challenge.PushChallengeStore;
 import de.arbeitsagentur.keycloak.push.token.PushConfirmTokenBuilder;
 import de.arbeitsagentur.keycloak.push.token.PushEnrollmentTokenBuilder;
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
+import java.net.URI;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.Date;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.keycloak.crypto.KeyUse;
@@ -18,16 +27,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.mockito.Mockito;
-
-import java.net.URI;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.Date;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class PushTokenBuilderTest {
 
@@ -41,21 +40,22 @@ class PushTokenBuilderTest {
         Mockito.reset(session, realm, keyManager);
         keyWrapper = buildKeyWrapper("test-kid", Algorithm.RS256.toString());
         Mockito.when(session.keys()).thenReturn(keyManager);
-        Mockito.when(keyManager.getActiveKey(Mockito.any(), Mockito.eq(KeyUse.SIG), Mockito.eq(Algorithm.RS256.toString())))
-            .thenReturn(keyWrapper);
+        Mockito.when(keyManager.getActiveKey(
+                        Mockito.any(), Mockito.eq(KeyUse.SIG), Mockito.eq(Algorithm.RS256.toString())))
+                .thenReturn(keyWrapper);
         Mockito.when(realm.getName()).thenReturn("push-mfa");
     }
 
     @Test
     void confirmTokenCarriesExpectedClaims() throws Exception {
         String token = PushConfirmTokenBuilder.build(
-            session,
-            realm,
-            "device-alias",
-            "challenge-123",
-            Instant.ofEpochSecond(1700000100),
-            URI.create("http://localhost:8080/"),
-            "test-client");
+                session,
+                realm,
+                "device-alias",
+                "challenge-123",
+                Instant.ofEpochSecond(1700000100),
+                URI.create("http://localhost:8080/"),
+                "test-client");
 
         SignedJWT jwt = SignedJWT.parse(token);
         JWTClaimsSet claims = jwt.getJWTClaimsSet();
@@ -72,32 +72,28 @@ class PushTokenBuilderTest {
 
     @Test
     void enrollmentTokenIncludesEnrollmentDetails() throws Exception {
-        byte[] nonce = new byte[]{1, 2, 3};
+        byte[] nonce = new byte[] {1, 2, 3};
         PushChallenge challenge = new PushChallenge(
-            "challenge-abc",
-            "realm-id",
-            "user-id",
-            nonce,
-            null,
-            null,
-            "watch-secret",
-            null,
-            Instant.ofEpochSecond(1700000200),
-            PushChallenge.Type.ENROLLMENT,
-            PushChallengeStatus.PENDING,
-            Instant.now(),
-            null);
+                "challenge-abc",
+                "realm-id",
+                "user-id",
+                nonce,
+                null,
+                null,
+                "watch-secret",
+                null,
+                Instant.ofEpochSecond(1700000200),
+                PushChallenge.Type.ENROLLMENT,
+                PushChallengeStatus.PENDING,
+                Instant.now(),
+                null);
 
         UserModel user = Mockito.mock(UserModel.class);
         Mockito.when(user.getId()).thenReturn("user-id");
         Mockito.when(user.getUsername()).thenReturn("demo-user");
 
-        String token = PushEnrollmentTokenBuilder.build(
-            session,
-            realm,
-            user,
-            challenge,
-            URI.create("http://localhost:8080/"));
+        String token =
+                PushEnrollmentTokenBuilder.build(session, realm, user, challenge, URI.create("http://localhost:8080/"));
         SignedJWT jwt = SignedJWT.parse(token);
         JWTClaimsSet claims = jwt.getJWTClaimsSet();
 

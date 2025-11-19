@@ -25,19 +25,20 @@ public final class PushChallenge {
     private final Instant createdAt;
     private final Instant resolvedAt;
 
-    public PushChallenge(String id,
-                         String realmId,
-                         String userId,
-                         byte[] nonce,
-                         String credentialId,
-                         String clientId,
-                         String watchSecret,
-                         String rootSessionId,
-                         Instant expiresAt,
-                         Type type,
-                         PushChallengeStatus status,
-                         Instant createdAt,
-                         Instant resolvedAt) {
+    public PushChallenge(
+            String id,
+            String realmId,
+            String userId,
+            byte[] nonce,
+            String credentialId,
+            String clientId,
+            String watchSecret,
+            String rootSessionId,
+            Instant expiresAt,
+            Type type,
+            PushChallengeStatus status,
+            Instant createdAt,
+            Instant resolvedAt) {
         this.id = Objects.requireNonNull(id);
         this.realmId = Objects.requireNonNull(realmId);
         this.userId = Objects.requireNonNull(userId);

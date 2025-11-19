@@ -2,14 +2,12 @@ package de.arbeitsagentur.keycloak.push.credential;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.keycloak.util.JsonSerialization;
-
 import java.io.IOException;
+import org.keycloak.util.JsonSerialization;
 
 public final class PushCredentialUtils {
 
-    private PushCredentialUtils() {
-    }
+    private PushCredentialUtils() {}
 
     private static ObjectMapper mapper() {
         return JsonSerialization.mapper;

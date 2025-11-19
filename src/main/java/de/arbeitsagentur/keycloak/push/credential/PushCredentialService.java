@@ -1,27 +1,23 @@
 package de.arbeitsagentur.keycloak.push.credential;
 
 import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.keycloak.credential.CredentialModel;
 import org.keycloak.models.SubjectCredentialManager;
 import org.keycloak.models.UserModel;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 public final class PushCredentialService {
 
-    private PushCredentialService() {
-    }
+    private PushCredentialService() {}
 
     public static List<CredentialModel> getActiveCredentials(UserModel user) {
         return user.credentialManager()
-            .getStoredCredentialsByTypeStream(PushMfaConstants.CREDENTIAL_TYPE)
-            .collect(Collectors.toList());
+                .getStoredCredentialsByTypeStream(PushMfaConstants.CREDENTIAL_TYPE)
+                .collect(Collectors.toList());
     }
 
-    public static CredentialModel createCredential(UserModel user,
-                                                   String label,
-                                                   PushCredentialData data) {
+    public static CredentialModel createCredential(UserModel user, String label, PushCredentialData data) {
         CredentialModel model = new CredentialModel();
         model.setType(PushMfaConstants.CREDENTIAL_TYPE);
         model.setUserLabel(label);
@@ -36,9 +32,7 @@ public final class PushCredentialService {
         return PushCredentialUtils.fromJson(credentialModel.getCredentialData());
     }
 
-    public static void updateCredential(UserModel user,
-                                        CredentialModel credential,
-                                        PushCredentialData data) {
+    public static void updateCredential(UserModel user, CredentialModel credential, PushCredentialData data) {
         credential.setCredentialData(PushCredentialUtils.toJson(data));
         user.credentialManager().updateStoredCredential(credential);
     }

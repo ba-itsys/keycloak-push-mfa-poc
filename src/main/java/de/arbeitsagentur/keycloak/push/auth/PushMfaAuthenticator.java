@@ -11,10 +11,12 @@ import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
+import java.util.List;
+import java.util.Optional;
 import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
-import org.keycloak.authentication.Authenticator;
 import org.keycloak.authentication.AuthenticationFlowError;
+import org.keycloak.authentication.Authenticator;
 import org.keycloak.credential.CredentialModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -23,19 +25,19 @@ import org.keycloak.models.utils.FormMessage;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
-import java.util.List;
-import java.util.Optional;
-
 public class PushMfaAuthenticator implements Authenticator {
 
     private static final Logger LOG = Logger.getLogger(PushMfaAuthenticator.class);
+
     @Override
     public void authenticate(AuthenticationFlowContext context) {
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
 
         List<CredentialModel> credentials = PushCredentialService.getActiveCredentials(context.getUser());
         if (credentials.isEmpty()) {
-            LOG.infof("User %s attempted push MFA without registered device", context.getUser().getId());
+            LOG.infof(
+                    "User %s attempted push MFA without registered device",
+                    context.getUser().getId());
             context.success();
             return;
         }
@@ -49,63 +51,68 @@ public class PushMfaAuthenticator implements Authenticator {
         }
 
         PushChallengeStore challengeStore = new PushChallengeStore(context.getSession());
-        int pendingChallenges = challengeStore.countPendingAuthentication(context.getRealm().getId(), context.getUser().getId());
+        int pendingChallenges = challengeStore.countPendingAuthentication(
+                context.getRealm().getId(), context.getUser().getId());
         if (pendingChallenges >= PushMfaConstants.MAX_PENDING_AUTH_CHALLENGES) {
-            LOG.debugf("User %s already has %d pending push challenges; refusing new one",
-                context.getUser().getId(), pendingChallenges);
-            context.failureChallenge(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR,
-                context.form().setError("push-mfa-too-many-challenges")
-                    .createErrorPage(Response.Status.TOO_MANY_REQUESTS));
+            LOG.debugf(
+                    "User %s already has %d pending push challenges; refusing new one",
+                    context.getUser().getId(), pendingChallenges);
+            context.failureChallenge(
+                    AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR,
+                    context.form()
+                            .setError("push-mfa-too-many-challenges")
+                            .createErrorPage(Response.Status.TOO_MANY_REQUESTS));
             return;
         }
         byte[] challengeBytes = new byte[0];
 
         String clientId = context.getAuthenticationSession().getClient() != null
-            ? context.getAuthenticationSession().getClient().getClientId()
-            : null;
+                ? context.getAuthenticationSession().getClient().getClientId()
+                : null;
 
         String rootSessionId = context.getAuthenticationSession().getParentSession() != null
-            ? context.getAuthenticationSession().getParentSession().getId()
-            : null;
+                ? context.getAuthenticationSession().getParentSession().getId()
+                : null;
 
         String watchSecret = KeycloakModelUtils.generateId();
         PushChallenge pushChallenge = challengeStore.create(
-            context.getRealm().getId(),
-            context.getUser().getId(),
-            challengeBytes,
-            PushChallenge.Type.AUTHENTICATION,
-            PushMfaConstants.CHALLENGE_TTL,
-            credential.getId(),
-            clientId,
-            watchSecret,
-            rootSessionId);
+                context.getRealm().getId(),
+                context.getUser().getId(),
+                challengeBytes,
+                PushChallenge.Type.AUTHENTICATION,
+                PushMfaConstants.CHALLENGE_TTL,
+                credential.getId(),
+                clientId,
+                watchSecret,
+                rootSessionId);
 
         authSession.setAuthNote(PushMfaConstants.CHALLENGE_NOTE, pushChallenge.getId());
         authSession.setAuthNote(PushMfaConstants.CHALLENGE_WATCH_SECRET_NOTE, watchSecret);
 
         String confirmToken = PushConfirmTokenBuilder.build(
-            context.getSession(),
-            context.getRealm(),
-            credentialData.getPseudonymousUserId(),
-            pushChallenge.getId(),
-            pushChallenge.getExpiresAt(),
-            context.getUriInfo().getBaseUri(),
-            clientId);
+                context.getSession(),
+                context.getRealm(),
+                credentialData.getPseudonymousUserId(),
+                pushChallenge.getId(),
+                pushChallenge.getExpiresAt(),
+                context.getUriInfo().getBaseUri(),
+                clientId);
 
-        LOG.debugf("Push message prepared {version=%d,type=%d,pseudonymousUserId=%s}",
-            PushMfaConstants.PUSH_MESSAGE_VERSION,
-            PushMfaConstants.PUSH_MESSAGE_TYPE,
-            credentialData.getPseudonymousUserId());
+        LOG.debugf(
+                "Push message prepared {version=%d,type=%d,pseudonymousUserId=%s}",
+                PushMfaConstants.PUSH_MESSAGE_VERSION,
+                PushMfaConstants.PUSH_MESSAGE_TYPE,
+                credentialData.getPseudonymousUserId());
 
         PushNotificationService.notifyDevice(
-            context.getSession(),
-            context.getRealm(),
-            context.getUser(),
-            confirmToken,
-            credentialData.getPseudonymousUserId(),
-            pushChallenge.getId(),
-            clientId,
-            credentialData.getPushProviderType());
+                context.getSession(),
+                context.getRealm(),
+                context.getUser(),
+                confirmToken,
+                credentialData.getPseudonymousUserId(),
+                pushChallenge.getId(),
+                clientId,
+                credentialData.getPushProviderType());
         showWaitingForm(context, pushChallenge, credentialData, confirmToken);
     }
 
@@ -116,8 +123,11 @@ public class PushMfaAuthenticator implements Authenticator {
         String challengeId = authSession.getAuthNote(PushMfaConstants.CHALLENGE_NOTE);
 
         if (challengeId == null) {
-            context.failureChallenge(AuthenticationFlowError.INTERNAL_ERROR,
-                context.form().setError("push-mfa-missing-challenge").createErrorPage(Response.Status.INTERNAL_SERVER_ERROR));
+            context.failureChallenge(
+                    AuthenticationFlowError.INTERNAL_ERROR,
+                    context.form()
+                            .setError("push-mfa-missing-challenge")
+                            .createErrorPage(Response.Status.INTERNAL_SERVER_ERROR));
             return;
         }
 
@@ -132,8 +142,9 @@ public class PushMfaAuthenticator implements Authenticator {
 
         Optional<PushChallenge> challenge = challengeStore.get(challengeId);
         if (challenge.isEmpty()) {
-            context.failureChallenge(AuthenticationFlowError.EXPIRED_CODE,
-                context.form().setError("push-mfa-expired").createForm("push-expired.ftl"));
+            context.failureChallenge(
+                    AuthenticationFlowError.EXPIRED_CODE,
+                    context.form().setError("push-mfa-expired").createForm("push-expired.ftl"));
             clearChallengeNotes(authSession);
             return;
         }
@@ -148,32 +159,37 @@ public class PushMfaAuthenticator implements Authenticator {
             case DENIED -> {
                 challengeStore.remove(challengeId);
                 clearChallengeNotes(authSession);
-                context.failureChallenge(AuthenticationFlowError.INVALID_CREDENTIALS,
-                    context.form().setError("push-mfa-denied").createForm("push-denied.ftl"));
+                context.failureChallenge(
+                        AuthenticationFlowError.INVALID_CREDENTIALS,
+                        context.form().setError("push-mfa-denied").createForm("push-denied.ftl"));
             }
             case EXPIRED -> {
                 challengeStore.remove(challengeId);
                 clearChallengeNotes(authSession);
-                context.failureChallenge(AuthenticationFlowError.EXPIRED_CODE,
-                    context.form().setError("push-mfa-expired").createForm("push-expired.ftl"));
+                context.failureChallenge(
+                        AuthenticationFlowError.EXPIRED_CODE,
+                        context.form().setError("push-mfa-expired").createForm("push-expired.ftl"));
             }
             case PENDING -> {
                 CredentialModel credentialModel = resolveCredentialForChallenge(context.getUser(), current);
-                PushCredentialData credentialData = credentialModel == null ? null : PushCredentialService.readCredentialData(credentialModel);
+                PushCredentialData credentialData =
+                        credentialModel == null ? null : PushCredentialService.readCredentialData(credentialModel);
                 String clientId = current.getClientId();
                 if (clientId == null && context.getAuthenticationSession().getClient() != null) {
                     clientId = context.getAuthenticationSession().getClient().getClientId();
                 }
-                String confirmToken = (credentialModel == null || credentialData == null || credentialData.getPseudonymousUserId() == null)
-                    ? null
-                    : PushConfirmTokenBuilder.build(
-                        context.getSession(),
-                        context.getRealm(),
-                        credentialData.getPseudonymousUserId(),
-                        current.getId(),
-                        current.getExpiresAt(),
-                        context.getUriInfo().getBaseUri(),
-                        clientId);
+                String confirmToken = (credentialModel == null
+                                || credentialData == null
+                                || credentialData.getPseudonymousUserId() == null)
+                        ? null
+                        : PushConfirmTokenBuilder.build(
+                                context.getSession(),
+                                context.getRealm(),
+                                credentialData.getPseudonymousUserId(),
+                                current.getId(),
+                                current.getExpiresAt(),
+                                context.getUriInfo().getBaseUri(),
+                                clientId);
 
                 showWaitingForm(context, current, credentialData, confirmToken);
             }
@@ -197,8 +213,8 @@ public class PushMfaAuthenticator implements Authenticator {
             return;
         }
 
-        boolean alreadyRequired = user.getRequiredActionsStream()
-            .anyMatch(action -> PushMfaConstants.REQUIRED_ACTION_ID.equals(action));
+        boolean alreadyRequired =
+                user.getRequiredActionsStream().anyMatch(action -> PushMfaConstants.REQUIRED_ACTION_ID.equals(action));
         if (!alreadyRequired) {
             user.addRequiredAction(PushMfaConstants.REQUIRED_ACTION_ID);
         }
@@ -215,19 +231,19 @@ public class PushMfaAuthenticator implements Authenticator {
             if (byId != null) {
                 return byId;
             }
-            LOG.warnf("Credential %s referenced by challenge %s not found for user %s",
-                challenge.getCredentialId(),
-                challenge.getId(),
-                user.getId());
+            LOG.warnf(
+                    "Credential %s referenced by challenge %s not found for user %s",
+                    challenge.getCredentialId(), challenge.getId(), user.getId());
         }
         List<CredentialModel> credentials = PushCredentialService.getActiveCredentials(user);
         return credentials.isEmpty() ? null : credentials.get(0);
     }
 
-    private void showWaitingForm(AuthenticationFlowContext context,
-                                 PushChallenge challenge,
-                                 PushCredentialData credentialData,
-                                 String confirmToken) {
+    private void showWaitingForm(
+            AuthenticationFlowContext context,
+            PushChallenge challenge,
+            PushCredentialData credentialData,
+            String confirmToken) {
         String challengeId = challenge != null ? challenge.getId() : null;
         String watchSecret = challenge != null ? challenge.getWatchSecret() : null;
         AuthenticationSessionModel authSession = context.getAuthenticationSession();
@@ -236,13 +252,14 @@ public class PushMfaAuthenticator implements Authenticator {
         }
 
         context.form()
-            .setAttribute("challengeId", challengeId)
-            .setAttribute("pollingIntervalSeconds", 5)
-            .setAttribute("pushUsername", context.getUser().getUsername())
-            .setAttribute("pushConfirmToken", confirmToken)
-            .setAttribute("pushPseudonymousId", credentialData != null ? credentialData.getPseudonymousUserId() : null)
-            .setAttribute("pushMessageVersion", String.valueOf(PushMfaConstants.PUSH_MESSAGE_VERSION))
-            .setAttribute("pushMessageType", String.valueOf(PushMfaConstants.PUSH_MESSAGE_TYPE));
+                .setAttribute("challengeId", challengeId)
+                .setAttribute("pollingIntervalSeconds", 5)
+                .setAttribute("pushUsername", context.getUser().getUsername())
+                .setAttribute("pushConfirmToken", confirmToken)
+                .setAttribute(
+                        "pushPseudonymousId", credentialData != null ? credentialData.getPseudonymousUserId() : null)
+                .setAttribute("pushMessageVersion", String.valueOf(PushMfaConstants.PUSH_MESSAGE_VERSION))
+                .setAttribute("pushMessageType", String.valueOf(PushMfaConstants.PUSH_MESSAGE_TYPE));
 
         String watchUrl = buildChallengeWatchUrl(context, challengeId, watchSecret);
         if (watchUrl != null) {
@@ -264,15 +281,16 @@ public class PushMfaAuthenticator implements Authenticator {
         if (challengeId == null || watchSecret == null || watchSecret.isBlank()) {
             return null;
         }
-        UriBuilder builder = context.getUriInfo().getBaseUriBuilder()
-            .path("realms")
-            .path(context.getRealm().getName())
-            .path("push-mfa")
-            .path("login")
-            .path("challenges")
-            .path(challengeId)
-            .path("events")
-            .queryParam("secret", watchSecret);
+        UriBuilder builder = context.getUriInfo()
+                .getBaseUriBuilder()
+                .path("realms")
+                .path(context.getRealm().getName())
+                .path("push-mfa")
+                .path("login")
+                .path("challenges")
+                .path(challengeId)
+                .path("events")
+                .queryParam("secret", watchSecret);
         return builder.build().toString();
     }
 }

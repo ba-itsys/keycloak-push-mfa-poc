@@ -1,5 +1,8 @@
 package de.arbeitsagentur.keycloak.push;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -16,18 +19,14 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import de.arbeitsagentur.keycloak.push.util.PushSignatureVerifier;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.crypto.KeyType;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jws.JWSInput;
-
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PushSignatureVerifierTest {
 
@@ -39,20 +38,20 @@ class PushSignatureVerifierTest {
     @Test
     void rsaSignatureRoundTrip() throws Exception {
         RSAKey rsaKey = new RSAKeyGenerator(2048)
-            .keyID("rsa-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.RS256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("rsa-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.RS256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         SignedJWT jwt = signed("rsa-test", rsaKey, JWSAlgorithm.RS256);
         JWSInput input = new JWSInput(jwt.serialize());
         KeyWrapper wrapper = keyWrapper(rsaKey.toPublicJWK());
         assertTrue(PushSignatureVerifier.verify(input, wrapper));
 
         RSAKey otherKey = new RSAKeyGenerator(2048)
-            .keyID("rsa-other-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.RS256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("rsa-other-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.RS256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         SignedJWT forged = signed("rsa-test", otherKey, JWSAlgorithm.RS256);
         assertFalse(PushSignatureVerifier.verify(new JWSInput(forged.serialize()), wrapper));
     }
@@ -60,37 +59,35 @@ class PushSignatureVerifierTest {
     @Test
     void ecSignatureRoundTrip() throws Exception {
         ECKey ecKey = new ECKeyGenerator(Curve.P_256)
-            .keyID("ec-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.ES256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("ec-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.ES256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         SignedJWT jwt = signed("ec-test", ecKey, JWSAlgorithm.ES256);
         KeyWrapper wrapper = keyWrapper(ecKey.toPublicJWK());
         assertTrue(PushSignatureVerifier.verify(new JWSInput(jwt.serialize()), wrapper));
 
         ECKey tamperedKey = new ECKeyGenerator(Curve.P_256)
-            .keyID("ec-tampered-" + UUID.randomUUID())
-            .algorithm(JWSAlgorithm.ES256)
-            .keyUse(KeyUse.SIGNATURE)
-            .generate();
+                .keyID("ec-tampered-" + UUID.randomUUID())
+                .algorithm(JWSAlgorithm.ES256)
+                .keyUse(KeyUse.SIGNATURE)
+                .generate();
         SignedJWT forged = signed("ec-test", tamperedKey, JWSAlgorithm.ES256);
         assertFalse(PushSignatureVerifier.verify(new JWSInput(forged.serialize()), wrapper));
     }
 
     private SignedJWT signed(String subject, JWK jwk, JWSAlgorithm alg) throws Exception {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
-            .subject(subject)
-            .issuer("test-suite")
-            .expirationTime(java.util.Date.from(Instant.now().plusSeconds(60)))
-            .build();
+                .subject(subject)
+                .issuer("test-suite")
+                .expirationTime(java.util.Date.from(Instant.now().plusSeconds(60)))
+                .build();
         JWSHeader header = new JWSHeader.Builder(alg)
-            .type(JOSEObjectType.JWT)
-            .keyID(jwk.getKeyID())
-            .build();
+                .type(JOSEObjectType.JWT)
+                .keyID(jwk.getKeyID())
+                .build();
         SignedJWT jwt = new SignedJWT(header, claims);
-        JWSSigner signer = jwk instanceof RSAKey rsa
-            ? new RSASSASigner(rsa)
-            : new ECDSASigner((ECKey) jwk);
+        JWSSigner signer = jwk instanceof RSAKey rsa ? new RSASSASigner(rsa) : new ECDSASigner((ECKey) jwk);
         jwt.sign(signer);
         return jwt;
     }
@@ -101,11 +98,13 @@ class PushSignatureVerifierTest {
         if (jwk instanceof RSAKey rsaKey) {
             wrapper.setType(KeyType.RSA);
             wrapper.setPublicKey(rsaKey.toRSAPublicKey());
-            wrapper.setAlgorithm(rsaKey.getAlgorithm() != null ? rsaKey.getAlgorithm().getName() : JWSAlgorithm.RS256.getName());
+            wrapper.setAlgorithm(
+                    rsaKey.getAlgorithm() != null ? rsaKey.getAlgorithm().getName() : JWSAlgorithm.RS256.getName());
         } else if (jwk instanceof ECKey ecKey) {
             wrapper.setType(KeyType.EC);
             wrapper.setPublicKey(ecKey.toECPublicKey());
-            wrapper.setAlgorithm(ecKey.getAlgorithm() != null ? ecKey.getAlgorithm().getName() : JWSAlgorithm.ES256.getName());
+            wrapper.setAlgorithm(
+                    ecKey.getAlgorithm() != null ? ecKey.getAlgorithm().getName() : JWSAlgorithm.ES256.getName());
         } else {
             throw new IllegalArgumentException("Unsupported key type");
         }
