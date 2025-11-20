@@ -9,6 +9,7 @@ import de.arbeitsagentur.keycloak.push.util.PushMfaConstants;
 import jakarta.ws.rs.core.MultivaluedMap;
 import java.security.SecureRandom;
 import java.util.List;
+import org.keycloak.Config;
 import org.keycloak.authentication.InitiatedActionSupport;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionFactory;
@@ -23,6 +24,9 @@ import org.keycloak.sessions.AuthenticationSessionModel;
 public class PushMfaRegisterRequiredAction implements RequiredActionProvider, RequiredActionFactory {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String CONFIG_APP_URI_PREFIX = "appUriPrefix";
+
+    private String appUriPrefix = PushMfaConstants.PUSH_APP_URI_PREFIX;
 
     @Override
     public String getId() {
@@ -62,7 +66,7 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
         form.setAttribute("pushUsername", context.getUser().getUsername());
         form.setAttribute("enrollmentToken", enrollmentToken);
         form.setAttribute("qrPayload", enrollmentToken);
-        form.setAttribute("pushQrUri", PushMfaConstants.PUSH_APP_URI_PREFIX + enrollmentToken);
+        form.setAttribute("pushQrUri", buildPushUri(enrollmentToken));
         form.setAttribute("enrollChallengeId", challenge.getId());
         form.setAttribute("pollingIntervalSeconds", 3);
         String eventsUrl = buildEnrollmentEventsUrl(context, challenge);
@@ -108,6 +112,7 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
             form.setAttribute("pushUsername", context.getUser().getUsername());
             form.setAttribute("enrollmentToken", enrollmentToken);
             form.setAttribute("qrPayload", enrollmentToken);
+            form.setAttribute("pushQrUri", buildPushUri(enrollmentToken));
             form.setAttribute("enrollChallengeId", challenge.getId());
             form.setAttribute("pollingIntervalSeconds", 5);
             String eventsUrl = buildEnrollmentEventsUrl(context, challenge);
@@ -133,8 +138,10 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
     }
 
     @Override
-    public void init(org.keycloak.Config.Scope config) {
-        // no-op
+    public void init(Config.Scope config) {
+        if (config != null) {
+            appUriPrefix = config.get(CONFIG_APP_URI_PREFIX, PushMfaConstants.PUSH_APP_URI_PREFIX);
+        }
     }
 
     @Override
@@ -211,6 +218,13 @@ public class PushMfaRegisterRequiredAction implements RequiredActionProvider, Re
             authSession.setAuthNote(PushMfaConstants.ENROLL_SSE_TOKEN_NOTE, ensured.getWatchSecret());
         }
         return ensured;
+    }
+
+    private String buildPushUri(String enrollmentToken) {
+        if (appUriPrefix == null || appUriPrefix.isBlank()) {
+            return enrollmentToken;
+        }
+        return appUriPrefix + enrollmentToken;
     }
 
     private String buildEnrollmentEventsUrl(RequiredActionContext context, PushChallenge challenge) {
