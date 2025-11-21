@@ -345,6 +345,21 @@ The repository includes thin shell wrappers that simulate a device:
 
 All scripts source `scripts/common.sh`, which centralizes base64 helpers, compact-JWS signing, DPoP proof creation, and token acquisition. The helper expects `scripts/sign_jws.py` to exist (or `COMMON_SIGN_JWS` to point to a compatible signer), so replacing the demo logic with a real implementation only requires swapping in a different signer.
 
+## Configuration Options
+
+**Where to configure**
+- Admin UI: `Authentication → Flows` (open your flow → execution `Config` for the authenticator) and `Authentication → Required Actions` (select `push-mfa-register` → `Configure`).
+- CLI: use `kcadm.sh` against the realm DB. Example: `kcadm.sh update authentication/executions/${EXEC_ID} -r demo -s "config.loginChallengeTtlSeconds=180" -s "config.maxPendingChallenges=2"` for the authenticator, or `kcadm.sh update authentication/required-actions/push-mfa-register -r demo -s "config.enrollmentChallengeTtlSeconds=300" -s "config.appUriPrefix=push-mfa-login-app://?token="`.
+- Environment variables: none; these values live in realm config, so set them via Admin UI or `kcadm.sh`.
+
+**Authenticator (`push-mfa-authenticator`)**
+- `loginChallengeTtlSeconds` (default: `120`) – TTL for login challenges/confirm tokens.
+- `maxPendingChallenges` (default: `1`) – maximum concurrent pending login challenges per user.
+
+**Required Action (`push-mfa-register`)**
+- `enrollmentChallengeTtlSeconds` (default: `120`) – TTL for enrollment challenges/tokens.
+- `appUriPrefix` (default: `push-mfa-login-app://?token=`) – prefix prepended to the enrollment token for companion-app deep links.
+
 ## App Implementation Notes
 
 - **Realm verification:** Enrollment starts when the app scans the QR code and reads `enrollmentToken`. Verify the JWT with the realm JWKS (`/realms/demo/protocol/openid-connect/certs`) before trusting its contents.
@@ -371,6 +386,7 @@ public final class MyPushSender implements PushNotificationSender {
                      String confirmToken,
                      String pseudonymousUserId,
                      String challengeId,
+                     String pushProviderId,
                      String clientId) {
         // Serialize confirmToken into the mobile push message and deliver it via FCM/APNs/etc.
     }
