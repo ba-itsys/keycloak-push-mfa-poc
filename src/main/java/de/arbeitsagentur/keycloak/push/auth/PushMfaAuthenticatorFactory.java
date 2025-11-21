@@ -20,6 +20,25 @@ public class PushMfaAuthenticatorFactory implements AuthenticatorFactory {
         AuthenticationExecutionModel.Requirement.ALTERNATIVE,
         AuthenticationExecutionModel.Requirement.DISABLED
     };
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES;
+
+    static {
+        ProviderConfigProperty loginTtl = new ProviderConfigProperty();
+        loginTtl.setName(PushMfaConstants.LOGIN_CHALLENGE_TTL_CONFIG);
+        loginTtl.setLabel("Login challenge TTL (seconds)");
+        loginTtl.setType(ProviderConfigProperty.STRING_TYPE);
+        loginTtl.setHelpText("Time-to-live for login push challenges in seconds.");
+        loginTtl.setDefaultValue(String.valueOf(PushMfaConstants.DEFAULT_LOGIN_CHALLENGE_TTL.toSeconds()));
+
+        ProviderConfigProperty maxPending = new ProviderConfigProperty();
+        maxPending.setName(PushMfaConstants.MAX_PENDING_AUTH_CHALLENGES_CONFIG);
+        maxPending.setLabel("Max pending login challenges");
+        maxPending.setType(ProviderConfigProperty.STRING_TYPE);
+        maxPending.setHelpText("Maximum number of open login challenges per user.");
+        maxPending.setDefaultValue(String.valueOf(PushMfaConstants.DEFAULT_MAX_PENDING_AUTH_CHALLENGES));
+
+        CONFIG_PROPERTIES = List.of(loginTtl, maxPending);
+    }
 
     @Override
     public String getId() {
@@ -38,7 +57,7 @@ public class PushMfaAuthenticatorFactory implements AuthenticatorFactory {
 
     @Override
     public boolean isConfigurable() {
-        return false;
+        return true;
     }
 
     @Override
@@ -73,7 +92,7 @@ public class PushMfaAuthenticatorFactory implements AuthenticatorFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return List.of();
+        return CONFIG_PROPERTIES;
     }
 
     public String getHelpText() {
